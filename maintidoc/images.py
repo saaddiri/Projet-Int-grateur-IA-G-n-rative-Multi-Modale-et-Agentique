@@ -50,8 +50,8 @@ class ClipEncoder:
         return output.pooler_output
 
     @torch.no_grad()
-    def encode_images(self, paths: list[Path]) -> list[list[float]]:
-        images = [Image.open(p).convert("RGB") for p in paths]
+    def encode_images(self, paths: list[Path | Image.Image]) -> list[list[float]]:
+        images = [p.convert("RGB") if isinstance(p, Image.Image) else Image.open(p).convert("RGB") for p in paths]
         inputs = self.processor(images=images, return_tensors="pt")
         feats = self._features(self.model.get_image_features(**inputs))
         feats = torch.nn.functional.normalize(feats, dim=-1)
@@ -70,6 +70,24 @@ class ClipEncoder:
 @lru_cache(maxsize=1)
 def get_clip() -> ClipEncoder:
     return ClipEncoder()
+
+
+@lru_cache(maxsize=1)
+def get_multilingual_clip_text():
+    """Encodeur de texte multilingue distillé dans l'espace de CLIP ViT-B/32.
+
+    Il produit des vecteurs comparables aux embeddings d'images de
+    ``openai/clip-vit-base-patch32`` : une question en français peut ainsi
+    retrouver une figure directement (recherche texte -> image multilingue).
+    """
+    from sentence_transformers import SentenceTransformer
+
+    return SentenceTransformer(settings.mclip_text_model, device="cpu")
+
+
+def encode_text_multilingual(text: str) -> list[float]:
+    vector = get_multilingual_clip_text().encode([text], normalize_embeddings=True)[0]
+    return vector.tolist()
 
 
 def _encode_for_vlm(path: Path, max_side: int = VLM_MAX_SIDE) -> str:

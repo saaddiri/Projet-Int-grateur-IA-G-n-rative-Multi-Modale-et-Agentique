@@ -37,6 +37,10 @@ class Settings:
     # Embeddings
     text_embed_model: str = _env("TEXT_EMBED_MODEL", "intfloat/multilingual-e5-small")
     clip_model: str = _env("CLIP_MODEL", "openai/clip-vit-base-patch32")
+    # Encodeur de texte multilingue aligné sur l'espace CLIP ViT-B/32 (questions en français)
+    mclip_text_model: str = _env("MCLIP_TEXT_MODEL", "sentence-transformers/clip-ViT-B-32-multilingual-v1")
+    # Reranker : vide = adapté s'il existe sinon initial ; "none", "base", "adapted" ou un chemin
+    reranker: str = _env("RERANKER", "")
 
     # Découpage
     chunk_size: int = int(_env("CHUNK_SIZE", "512"))
