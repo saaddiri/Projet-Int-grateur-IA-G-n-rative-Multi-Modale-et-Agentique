@@ -17,3 +17,6 @@ uploads/
 .idea/
 .DS_Store
 Thumbs.db
+
+# Poids des modèles adaptés (la fiche de version models/*.json est versionnée)
+models/*/

@@ -1,0 +1,37 @@
+{
+  "split": "test",
+  "questions": 30,
+  "positive_in_top20": 30,
+  "results": {
+    "sans reranker": {
+      "ndcg@5": 0.6114,
+      "mrr@10": 0.6003,
+      "recall@5": 0.7333,
+      "ndcg@5_par_langue": {
+        "fr": 0.4663,
+        "en": 0.7223
+      },
+      "ms_par_question": 0.0
+    },
+    "reranker initial": {
+      "ndcg@5": 0.8218,
+      "mrr@10": 0.7986,
+      "recall@5": 0.9,
+      "ndcg@5_par_langue": {
+        "fr": 0.761,
+        "en": 0.8683
+      },
+      "ms_par_question": 6134.1
+    },
+    "reranker adapté": {
+      "ndcg@5": 0.8464,
+      "mrr@10": 0.8214,
+      "recall@5": 0.9333,
+      "ndcg@5_par_langue": {
+        "fr": 0.7408,
+        "en": 0.9272
+      },
+      "ms_par_question": 5609.8
+    }
+  }
+}

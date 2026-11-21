@@ -1,0 +1,14 @@
+{
+  "passages": 29,
+  "questions_generated": 237,
+  "questions_rejected_by_judge": 78,
+  "questions_kept": 156,
+  "questions_train": 126,
+  "questions_test": 30,
+  "pairs_train": 756,
+  "pairs_test": 180,
+  "pairs_total": 936,
+  "negatives_per_question": 5,
+  "generator": "qwen2.5:3b",
+  "seed": 42
+}

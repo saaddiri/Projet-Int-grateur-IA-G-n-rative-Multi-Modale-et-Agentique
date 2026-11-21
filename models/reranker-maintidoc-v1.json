@@ -1,0 +1,17 @@
+{
+  "name": "reranker-maintidoc-v1",
+  "version": "1.0.0",
+  "created": "2026-11-21T18:59:43",
+  "base_model": "cross-encoder/mmarco-mMiniLMv2-L12-H384-v1",
+  "task": "reranking question -> passage (cross-encoder, sortie logit)",
+  "train_file": "data/reranker/pairs_train.jsonl",
+  "train_sha256": "a90515e0821dc61f76457b9a9969d7dae388d3a6d9971f33c294bd239e00c7ab",
+  "train_pairs": 756,
+  "epochs": 1,
+  "batch_size": 16,
+  "learning_rate": 3e-05,
+  "max_length": 320,
+  "loss": "BCEWithLogits",
+  "seed": 42,
+  "training_seconds": 1034.6
+}
