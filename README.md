@@ -11,9 +11,40 @@ avec des **références vérifiables** (document, page, type de contenu).
 | Étape | Contenu | État |
 |---|---|---|
 | **1** | RAG agentique multimodal (LlamaIndex, PGVector, CLIP, Qwen/Ollama, LangChain, Streamlit) | ✅ livrée |
-| 2 | Fine-tuning (reranker adapté), VLM, sorties structurées | à venir |
+| **2** | Multimodalité (photo + VLM, CLIP multilingue), fusion + reranking, reranker adapté, sorties Pydantic | ✅ livrée |
 | 3 | Orchestration LangGraph, serveur/client MCP, tickets avec validation humaine | à venir |
 | 4 | Client Web, bot Telegram/Discord, sécurité, déploiement | à venir |
+
+## Étape 2 — Multimodalité et fine-tuning
+
+```
+ question (FR/EN) ─┐                       ┌─► passages / tableaux / descriptions (embeddings texte)
+                   ├─► requêtes ───────────┼─► figures : CLIP multilingue (texte -> image)
+ photo ─► VLM Qwen2.5-VL ─► PhotoAnalysis ─┘
+   └──────────────────────────────────────────► figures : CLIP image -> image
+                 ─► fusion RRF ─► reranker (initial ou adapté) ─► top 5
+                 ─► LLM, sortie structurée Pydantic : réponse, citations, incertitude, clarification
+```
+
+| Livrable | Réalisation |
+|---|---|
+| L2.1 Module d'analyse d'images (VLM) | [`maintidoc/vision.py`](maintidoc/vision.py) — `PhotoAnalysis` (description, textes visibles, composants, voyants, requête, confiance) |
+| L2.2 Pipeline RAG multimodal | [`maintidoc/multimodal.py`](maintidoc/multimodal.py) — recherches parallèles, fusion RRF, reranking, réponse `MaintiDocAnswer` |
+| L2.3 Jeu de données d'adaptation | [`scripts/build_dataset.py`](scripts/build_dataset.py) → [`data/reranker/`](data/reranker/) (questions FR/EN générées puis vérifiées, négatifs difficiles) |
+| L2.4 Reranker adapté et versionné | [`scripts/train_reranker.py`](scripts/train_reranker.py) → `models/reranker-maintidoc-v1/` + fiche [`models/reranker-maintidoc-v1.json`](models/reranker-maintidoc-v1.json) |
+| L2.5 Rapport comparatif | [`docs/RAPPORT_RERANKER.md`](docs/RAPPORT_RERANKER.md) — nDCG@5, MRR@10 sans reranker / initial / adapté |
+| L2.6 Application V2 texte + photo | mode « Multimodal V2 » de [`app.py`](app.py) |
+
+### Reproduire l'étape 2
+
+```bash
+# modèles supplémentaires (téléchargés automatiquement au premier usage) :
+#   cross-encoder/mmarco-mMiniLMv2-L12-H384-v1, sentence-transformers/clip-ViT-B-32-multilingual-v1
+python -m scripts.build_dataset --per-lang 4 --negatives 5   # jeu de données (≈ 45 min sur CPU)
+python -m scripts.train_reranker                               # fine-tuning (≈ 20 min sur CPU)
+python -m scripts.eval_reranker                                # métriques -> data/reranker/eval_test.json
+streamlit run app.py                                           # mode « Multimodal V2 »
+```
 
 ## Étape 1 — RAG agentique multimodal
 
@@ -59,6 +90,9 @@ maintidoc/
   retrieval.py    recherche texte, tableaux, images (fusion CLIP + descriptions)
   rag.py          pipeline RAG simple (référence et repli)
   agent.py        agent LangChain avec outils de recherche
+  vision.py       analyse de photo par VLM, sortie Pydantic (étape 2)
+  multimodal.py   pipeline V2 : fusion RRF, reranking, réponse structurée (étape 2)
+  reranker.py     cross-encoder multilingue (initial / adapté) (étape 2)
 app.py            interface Streamlit
 scripts/          ingestion et questions en ligne de commande
 tests/            tests d'extraction

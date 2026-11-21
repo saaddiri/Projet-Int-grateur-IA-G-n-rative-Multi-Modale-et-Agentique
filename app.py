@@ -62,8 +62,13 @@ def sidebar() -> str:
     st.sidebar.divider()
     mode = st.sidebar.radio(
         "Mode de réponse",
-        ["Agent LangChain (outils)", "RAG simple"],
-        help="L'agent choisit lui-même les outils de recherche (texte, tableaux, figures).",
+        ["Multimodal V2 (texte + photo)", "Agent LangChain (outils)", "RAG simple"],
+        help="V2 : analyse de photo par VLM, fusion des recherches, reranking et réponse structurée. "
+        "Agent : le LLM choisit lui-même les outils de recherche.",
+    )
+    st.session_state["reranker_choice"] = st.sidebar.selectbox(
+        "Reranker (mode V2)", ["default", "adapted", "base", "none"],
+        help="default = reranker adapté s'il existe, sinon le reranker initial.",
     )
     if st.sidebar.button("Nouvelle conversation"):
         st.session_state.messages = []
@@ -88,13 +93,74 @@ def render_sources(answer) -> None:
                 st.text(hit.text[:1200])
 
 
+UNCERTAINTY_ICON = {"faible": "🟢", "moyenne": "🟠", "élevée": "🔴"}
+
+
+def render_v2() -> None:
+    """Mode V2 : question + photo -> réponse structurée (Pydantic)."""
+    from PIL import Image
+
+    from maintidoc.multimodal import answer as multimodal_answer
+    from maintidoc.reranker import resolve
+
+    with st.form("v2"):
+        photo_file = st.file_uploader("Photo de l'équipement (optionnelle)", type=["png", "jpg", "jpeg", "webp"])
+        question = st.text_area("Question", placeholder="Ex. : Que représente ce schéma ? À quoi sert ce bloc ?")
+        submitted = st.form_submit_button("Analyser", type="primary")
+    if not submitted:
+        return
+    if not question.strip() and photo_file is None:
+        st.warning("Saisissez une question ou ajoutez une photo.")
+        return
+
+    photo = Image.open(photo_file) if photo_file is not None else None
+    choice = st.session_state.get("reranker_choice", "default")
+    reranker = "default" if choice == "default" else resolve(choice)
+    with st.spinner("Analyse de la photo, recherche, reranking et génération…"):
+        try:
+            result, trace = multimodal_answer(question, photo, reranker=reranker)
+        except Exception as exc:
+            st.error(f"Erreur : {exc}. Vérifiez que PostgreSQL (docker compose) et Ollama sont démarrés.")
+            return
+
+    cols = st.columns([1, 2]) if photo is not None else [None, st.container()]
+    if photo is not None:
+        cols[0].image(photo, caption="Photo envoyée", use_container_width=True)
+    with cols[1]:
+        if result.needs_clarification:
+            st.warning(f"**Clarification demandée :** {result.clarification_question}")
+        st.markdown(result.answer)
+        st.caption(f"{UNCERTAINTY_ICON[result.uncertainty]} Incertitude {result.uncertainty} — {result.uncertainty_reason}")
+
+    if result.photo_analysis is not None:
+        with st.expander("🖼️ Analyse de la photo (VLM)"):
+            st.json(result.photo_analysis.model_dump())
+    with st.expander(f"📚 Citations ({len(result.citations)})", expanded=True):
+        for c in result.citations:
+            note = " — attribution automatique (reranker)" if c.attribution == "automatique" else ""
+            st.markdown(f"**[{c.ref}] {c.source}, p. {c.page}** ({c.content_type}){note}")
+            if c.image_path and Path(c.image_path).exists():
+                st.image(c.image_path, width=320)
+            st.text(c.excerpt)
+    with st.expander("🔎 Trace de recherche (fusion + reranking)"):
+        st.write({"requêtes": trace.queries, "listes fusionnées": trace.lists, "reranker": trace.reranker or "aucun",
+                  "score de pertinence (meilleur passage)": result.relevance_score})
+        for hit, score in trace.ranked:
+            st.markdown(f"- {hit.reference} — score reranker {score:.3f}")
+    with st.expander("{ } Sortie structurée (JSON)"):
+        st.json(result.model_dump(exclude={"photo_analysis"}))
+
+
 def main() -> None:
     st.title("🛠️ MaintiDoc — Assistant documentaire multimodal")
     st.caption(
-        "Étape 1 : RAG agentique multimodal (LlamaIndex · PGVector · CLIP · Qwen/Ollama · LangChain). "
+        "V2 : RAG multimodal (LlamaIndex · PGVector · CLIP multilingue · Qwen2.5-VL · reranker adapté · LangChain). "
         "Les réponses sont fondées sur les documents indexés et ne remplacent pas un technicien habilité."
     )
     mode = sidebar()
+    if mode.startswith("Multimodal"):
+        render_v2()
+        return
 
     st.session_state.setdefault("messages", [])
     for msg in st.session_state.messages:
