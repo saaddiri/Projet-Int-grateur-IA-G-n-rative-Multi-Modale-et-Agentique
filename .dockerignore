@@ -1,0 +1,10 @@
+# Liste blanche : seuls le code, les données de démonstration et les fichiers figés
+# entrent dans l'image (ni secrets, ni environnement virtuel, ni données générées).
+*
+!requirements.txt
+!versions.lock.json
+!app.py
+!maintidoc/
+!scripts/
+!data/
+**/__pycache__

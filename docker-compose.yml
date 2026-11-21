@@ -1,3 +1,28 @@
+# MaintiDoc — déploiement complet (étape 4)
+#
+#   docker compose up -d                          # base + backend + interface Web
+#   docker compose --profile telegram up -d       # + bot Telegram (TELEGRAM_BOT_TOKEN requis)
+#   docker compose --profile ollama up -d         # + Ollama en conteneur (sinon Ollama de l'hôte)
+#
+# Les secrets sont lus depuis .env (jamais versionné) ; voir .env.example.
+
+x-app: &app
+  build: .
+  image: maintidoc:4.0.0
+  env_file: .env
+  environment: &app-env
+    PG_HOST: pgvector
+    PG_PORT: "5432"
+    OLLAMA_BASE_URL: ${OLLAMA_BASE_URL_DOCKER:-http://host.docker.internal:11434}
+  extra_hosts:
+    - "host.docker.internal:host-gateway"
+  volumes:
+    - storage:/app/storage
+    - uploads:/app/uploads
+    - hf-cache:/cache/huggingface
+    - ./models:/app/models:ro
+  restart: unless-stopped
+
 services:
   pgvector:
     image: pgvector/pgvector:pg16
@@ -8,7 +33,7 @@ services:
       POSTGRES_PASSWORD: ${PG_PASSWORD:-maintidoc}
       POSTGRES_DB: ${PG_DATABASE:-maintidoc}
     ports:
-      - "${PG_PORT:-5433}:5432"
+      - "127.0.0.1:${PG_PORT:-5433}:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -17,5 +42,56 @@ services:
       timeout: 5s
       retries: 10
 
+  api:
+    <<: *app
+    container_name: maintidoc-api
+    command: ["uvicorn", "maintidoc.api:app", "--host", "0.0.0.0", "--port", "8000"]
+    ports:
+      - "127.0.0.1:8000:8000"
+    depends_on:
+      pgvector:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  web:
+    <<: *app
+    container_name: maintidoc-web
+    command: ["streamlit", "run", "app.py", "--server.port", "8501", "--server.address", "0.0.0.0"]
+    ports:
+      - "127.0.0.1:8501:8501"
+    depends_on:
+      pgvector:
+        condition: service_healthy
+
+  bot:
+    <<: *app
+    container_name: maintidoc-bot
+    profiles: ["telegram"]
+    command: ["python", "-m", "maintidoc.bot.telegram_bot"]
+    environment:
+      <<: *app-env
+      MAINTIDOC_API_URL: http://api:8000
+    depends_on:
+      api:
+        condition: service_healthy
+
+  ollama:
+    image: ollama/ollama:0.12.6
+    container_name: maintidoc-ollama
+    profiles: ["ollama"]
+    volumes:
+      - ollama:/root/.ollama
+    ports:
+      - "127.0.0.1:11434:11434"
+    restart: unless-stopped
+
 volumes:
   pgdata:
+  storage:
+  uploads:
+  hf-cache:
+  ollama:
