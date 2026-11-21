@@ -86,12 +86,12 @@ def graph(monkeypatch):
     created = []
 
     monkeypatch.setattr(workflow.mcp_client, "get_equipment_history",
-                        lambda eq, key=None: {"equipment": {"equipment_id": eq, "name": "Compresseur"},
+                        lambda eq, **kw: {"equipment": {"equipment_id": eq, "name": "Compresseur"},
                                               "interventions": [{"date": "2026-11-15", "type": "observation",
                                                                  "summary": "Vibrations"}]})
-    monkeypatch.setattr(workflow.mcp_client, "get_open_tickets", lambda eq, key=None: {"tickets": []})
+    monkeypatch.setattr(workflow.mcp_client, "get_open_tickets", lambda eq, **kw: {"tickets": []})
 
-    def fake_create(eq, title, description, token, key=None):
+    def fake_create(eq, title, description, token, **kw):
         created.append((eq, title, description, token))
         return {"created": True, "duplicate": False,
                 "ticket": {"ticket_id": "T-0099", "equipment_id": eq, "title": title}}
