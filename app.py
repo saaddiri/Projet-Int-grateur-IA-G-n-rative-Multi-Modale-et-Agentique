@@ -62,9 +62,16 @@ def sidebar() -> str:
     st.sidebar.divider()
     mode = st.sidebar.radio(
         "Mode de réponse",
-        ["Multimodal V2 (texte + photo)", "Agent LangChain (outils)", "RAG simple"],
-        help="V2 : analyse de photo par VLM, fusion des recherches, reranking et réponse structurée. "
+        ["Workflow agentique (LangGraph + MCP)", "Multimodal V2 (texte + photo)", "Agent LangChain (outils)",
+         "RAG simple"],
+        help="Workflow : historique et tickets via MCP, brouillon de ticket et approbation humaine. "
+        "V2 : analyse de photo par VLM, fusion des recherches, reranking et réponse structurée. "
         "Agent : le LLM choisit lui-même les outils de recherche.",
+    )
+    st.session_state["demo_user"] = st.sidebar.selectbox(
+        "Utilisateur (démonstration)", list(DEMO_USERS),
+        format_func=lambda u: f"{u} ({DEMO_USERS[u][1]})",
+        help="Identité simulée : la clé API associée est transmise au serveur MCP, qui applique les droits.",
     )
     st.session_state["reranker_choice"] = st.sidebar.selectbox(
         "Reranker (mode V2)", ["default", "adapted", "base", "none"],
@@ -94,6 +101,95 @@ def render_sources(answer) -> None:
 
 
 UNCERTAINTY_ICON = {"faible": "🟢", "moyenne": "🟠", "élevée": "🔴"}
+
+# Comptes de démonstration (étape 3) : la vraie association compte -> identité arrive à l'étape 4.
+DEMO_USERS = {
+    "tech.dupont": ("demo-key-dupont", "technicien, atelier A"),
+    "chef.martin": ("demo-key-martin", "superviseur, ateliers A et B"),
+    "stagiaire.leroy": ("demo-key-leroy", "lecteur, atelier A"),
+}
+
+
+@st.cache_resource
+def load_workflow():
+    from maintidoc.workflow import build_graph
+
+    return build_graph()
+
+
+def render_workflow() -> None:
+    """Étape 3 : workflow LangGraph (MCP + brouillon de ticket + approbation humaine)."""
+    import uuid
+
+    from langgraph.types import Command
+
+    from maintidoc.workflow import pending_interrupt, run_config
+
+    graph = load_workflow()
+    user_id = st.session_state.get("demo_user", "tech.dupont")
+    st.caption("Exemples : « Historique du CMP-101 » · « Le CMP-101 vibre au démarrage, prépare un ticket » · "
+               "« À quoi sert le Multi-Head Attention ? »")
+
+    with st.form("workflow"):
+        question = st.text_area("Demande", placeholder="Ex. : Le compresseur CMP-101 vibre au démarrage, prépare un ticket.")
+        photo_file = st.file_uploader("Photo (optionnelle)", type=["png", "jpg", "jpeg", "webp"])
+        submitted = st.form_submit_button("Lancer le workflow", type="primary")
+    if submitted and question.strip():
+        state = {"question": question, "steps": []}
+        if photo_file is not None:
+            target = UPLOAD_DIR / f"photo_{uuid.uuid4().hex}{Path(photo_file.name).suffix}"
+            target.write_bytes(photo_file.getbuffer())
+            state["photo_path"] = str(target)
+        config = run_config(uuid.uuid4().hex, user_id, DEMO_USERS[user_id][0], st.session_state.get("reranker_choice", "default"))
+        st.session_state["wf"] = {"config": config, "user": user_id}
+        with st.spinner("Workflow en cours (MCP, recherche documentaire, rédaction)…"):
+            try:
+                st.session_state["wf"]["result"] = graph.invoke(state, config)
+            except Exception as exc:
+                st.error(f"Erreur : {exc}. Vérifiez que PostgreSQL (docker compose) et Ollama sont démarrés.")
+                return
+
+    wf = st.session_state.get("wf")
+    if not wf or "result" not in wf:
+        return
+    result, config = wf["result"], wf["config"]
+    request = pending_interrupt(result)
+
+    if request:
+        st.info(f"⏸️ Workflow interrompu : approbation humaine requise (utilisateur {wf['user']}).")
+        for ticket in request["similar_tickets"]:
+            st.warning(f"Ticket ouvert similaire : **{ticket['ticket_id']}** — {ticket['title']}")
+        draft = request["draft"]
+        with st.form("approval"):
+            st.markdown(f"**Brouillon de ticket — {draft['equipment_id']}**")
+            title = st.text_input("Titre", draft["title"])
+            description = st.text_area("Description", draft["description"], height=220)
+            st.caption("L'approbation est liée à ce contenu exact et à votre identité ; "
+                       "toute modification ultérieure invalide le jeton.")
+            approve, cancel = st.columns(2)
+            approved = approve.form_submit_button("✅ Approuver et créer", type="primary")
+            cancelled = cancel.form_submit_button("✖️ Annuler")
+        if approved or cancelled:
+            decision = {"action": "approve", "title": title, "description": description} if approved else {"action": "cancel"}
+            with st.spinner("Reprise du workflow…"):
+                wf["result"] = graph.invoke(Command(resume=decision), config)
+            st.rerun()
+    else:
+        st.markdown(result.get("response", ""))
+        if result.get("ticket"):
+            st.success(f"Ticket {result['ticket']['ticket']['ticket_id']} enregistré par le serveur MCP.")
+
+    if result.get("doc_answer"):
+        with st.expander(f"📚 Recherche documentaire ({len(result['doc_answer']['citations'])} citations)"):
+            st.markdown(result["doc_answer"]["answer"])
+            for c in result["doc_answer"]["citations"]:
+                st.markdown(f"- [{c['ref']}] {c['source']}, p. {c['page']} ({c['content_type']})")
+    if result.get("history"):
+        with st.expander("🗂️ Historique et tickets ouverts (MCP)"):
+            st.json({"historique": result["history"], "tickets_ouverts": result.get("open_tickets", [])})
+    with st.expander("🧭 Étapes du graphe LangGraph", expanded=True):
+        for step in result.get("steps", []):
+            st.markdown(f"- {step}")
 
 
 def render_v2() -> None:
@@ -158,6 +254,9 @@ def main() -> None:
         "Les réponses sont fondées sur les documents indexés et ne remplacent pas un technicien habilité."
     )
     mode = sidebar()
+    if mode.startswith("Workflow"):
+        render_workflow()
+        return
     if mode.startswith("Multimodal"):
         render_v2()
         return
