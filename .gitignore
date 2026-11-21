@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+
+# Secrets / configuration locale
+.env
+
+# Données générées
+storage/
+uploads/
+
+# Outils locaux
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
