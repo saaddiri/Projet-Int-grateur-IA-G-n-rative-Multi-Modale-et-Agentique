@@ -12,8 +12,30 @@ avec des **références vérifiables** (document, page, type de contenu).
 |---|---|---|
 | **1** | RAG agentique multimodal (LlamaIndex, PGVector, CLIP, Qwen/Ollama, LangChain, Streamlit) | ✅ livrée |
 | **2** | Multimodalité (photo + VLM, CLIP multilingue), fusion + reranking, reranker adapté, sorties Pydantic | ✅ livrée |
-| 3 | Orchestration LangGraph, serveur/client MCP, tickets avec validation humaine | à venir |
+| **3** | Orchestration LangGraph, serveur/client MCP, tickets avec validation humaine | ✅ livrée |
 | 4 | Client Web, bot Telegram/Discord, sécurité, déploiement | à venir |
+
+## Étape 3 — Orchestration agentique et MCP
+
+Un graphe LangGraph consulte le service de maintenance via MCP, interroge la documentation,
+rédige un brouillon de ticket puis **s'interrompt** : le ticket n'est créé qu'après approbation
+explicite, avec un jeton signé lié à l'utilisateur, à l'équipement et au contenu exact.
+Détails, schéma du graphe et résultats : [`docs/WORKFLOW_ETAPE3.md`](docs/WORKFLOW_ETAPE3.md).
+
+| Livrable | Réalisation |
+|---|---|
+| L3.1 Workflow LangGraph documenté | [`maintidoc/workflow.py`](maintidoc/workflow.py) + [`docs/WORKFLOW_ETAPE3.md`](docs/WORKFLOW_ETAPE3.md) |
+| L3.2 Serveur MCP de démonstration | [`maintidoc/mcp_server.py`](maintidoc/mcp_server.py) — `get_equipment_history`, `get_open_tickets`, `create_ticket` ; données [`data/maintenance/seed.json`](data/maintenance/seed.json) |
+| L3.3 Client MCP intégré | [`maintidoc/mcp_client.py`](maintidoc/mcp_client.py) (stdio, clé API de l'utilisateur) |
+| L3.4 Brouillons de tickets | nœud `rediger_brouillon` (sortie Pydantic `TicketDraft`, références documentaires, tickets similaires) |
+| L3.5 Validation humaine et contrôles d'accès | `interrupt()` LangGraph + [`maintidoc/approval.py`](maintidoc/approval.py) (jeton HMAC) + contrôles côté serveur (clé API, site, rôle, idempotence, audit) |
+| L3.6 Démonstration de bout en bout | [`scripts/demo_workflow.py`](scripts/demo_workflow.py) et mode « Workflow agentique » de [`app.py`](app.py) |
+
+```bash
+python -m scripts.demo_workflow          # approbations demandées au clavier (--auto : simulées)
+pytest tests/test_etape3.py              # contrôles d'accès, approbation, idempotence, transitions
+streamlit run app.py                     # mode « Workflow agentique (LangGraph + MCP) »
+```
 
 ## Étape 2 — Multimodalité et fine-tuning
 
@@ -93,9 +115,13 @@ maintidoc/
   vision.py       analyse de photo par VLM, sortie Pydantic (étape 2)
   multimodal.py   pipeline V2 : fusion RRF, reranking, réponse structurée (étape 2)
   reranker.py     cross-encoder multilingue (initial / adapté) (étape 2)
+  workflow.py     graphe LangGraph avec interruption pour approbation (étape 3)
+  mcp_server.py   serveur MCP du service de maintenance simulé (étape 3)
+  mcp_client.py   client MCP (étape 3)
+  approval.py     jetons d'approbation liés au contenu et à l'utilisateur (étape 3)
 app.py            interface Streamlit
-scripts/          ingestion et questions en ligne de commande
-tests/            tests d'extraction
+scripts/          ingestion, questions, jeu de données, entraînement, démonstrations
+tests/            tests d'extraction, du pipeline V2 et de l'étape 3
 data/             PDF de démonstration (« Attention Is All You Need »)
 docs/             note technique
 ```
