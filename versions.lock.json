@@ -1,0 +1,24 @@
+{
+  "app_version": "4.0.0",
+  "prompts": {
+    "rag.RAG_SYSTEM_PROMPT": "f3263e4b6517c350",
+    "agent.AGENT_SYSTEM_PROMPT": "d015fe71cc3561d8",
+    "images.DESCRIBE_PROMPT": "2f92150d0d346ae4",
+    "vision.VISION_PROMPT": "3869cad0bbbd7692",
+    "multimodal.SYSTEM_PROMPT": "a456751e8c0247ae",
+    "workflow.DRAFT_PROMPT": "19419c754042592f"
+  },
+  "models": {
+    "llm": "qwen2.5:3b",
+    "vlm": "qwen2.5vl:3b",
+    "text_embeddings": "intfloat/multilingual-e5-small",
+    "clip": "openai/clip-vit-base-patch32",
+    "clip_multilingual_text": "sentence-transformers/clip-ViT-B-32-multilingual-v1",
+    "reranker": {
+      "name": "reranker-maintidoc-v1",
+      "version": "1.0.0",
+      "base_model": "cross-encoder/mmarco-mMiniLMv2-L12-H384-v1",
+      "train_sha256": "a90515e0821dc61f76457b9a9969d7dae388d3a6d9971f33c294bd239e00c7ab"
+    }
+  }
+}

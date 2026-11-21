@@ -76,6 +76,14 @@ def _cfg(config: RunnableConfig) -> dict:
     return config.get("configurable", {})
 
 
+def _auth(config: RunnableConfig) -> dict:
+    """Identifiants MCP : clé API de l'utilisateur, ou délégation par le backend."""
+    cfg = _cfg(config)
+    if cfg.get("on_behalf_of"):
+        return {"on_behalf_of": cfg["on_behalf_of"]}
+    return {"api_key": cfg.get("api_key")}
+
+
 # --------------------------------------------------------------------------- nœuds
 
 def understand(state: MaintiDocState) -> dict:
@@ -116,11 +124,11 @@ def clarify(state: MaintiDocState) -> dict:
 
 
 def consult_maintenance(state: MaintiDocState, config: RunnableConfig) -> dict:
-    api_key = _cfg(config).get("api_key")
+    auth = _auth(config)
     equipment_id = state["equipment_id"]
     try:
-        history = mcp_client.get_equipment_history(equipment_id, api_key)
-        tickets = mcp_client.get_open_tickets(equipment_id, api_key)["tickets"]
+        history = mcp_client.get_equipment_history(equipment_id, **auth)
+        tickets = mcp_client.get_open_tickets(equipment_id, **auth)["tickets"]
     except mcp_client.MCPToolError as exc:
         return {"error": str(exc), "steps": [f"consulter_maintenance : refus du serveur MCP ({exc})"]}
     return {"history": history, "open_tickets": tickets,
@@ -229,7 +237,7 @@ def create(state: MaintiDocState, config: RunnableConfig) -> dict:
     decision = state["decision"]
     try:
         result = mcp_client.create_ticket(state["equipment_id"], decision["title"], decision["description"],
-                                          decision["approval_token"], _cfg(config).get("api_key"))
+                                          decision["approval_token"], **_auth(config))
     except mcp_client.MCPToolError as exc:
         return {"error": str(exc), "steps": [f"creer_ticket : refus du serveur MCP ({exc})"]}
     ticket = result["ticket"]
@@ -288,8 +296,10 @@ def build_graph(checkpointer: Any = None):
     return graph.compile(checkpointer=checkpointer or InMemorySaver())
 
 
-def run_config(thread_id: str, user_id: str, api_key: str, reranker: Any = "default") -> dict:
-    return {"configurable": {"thread_id": thread_id, "user_id": user_id, "api_key": api_key, "reranker": reranker}}
+def run_config(thread_id: str, user_id: str, api_key: str | None = None, reranker: Any = "default",
+               on_behalf_of: str | None = None) -> dict:
+    return {"configurable": {"thread_id": thread_id, "user_id": user_id, "api_key": api_key,
+                             "on_behalf_of": on_behalf_of, "reranker": reranker}}
 
 
 def pending_interrupt(result: dict) -> dict | None:

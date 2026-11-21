@@ -21,6 +21,7 @@ Lancement (stdio) :  python -m maintidoc.mcp_server
 from __future__ import annotations
 
 import hashlib
+import hmac
 import json
 import logging
 import os
@@ -71,7 +72,11 @@ def init_db(db_path: Path, seed_path: Path) -> None:
 
 
 def create_server(api_key: str | None = None, db_path: Path | None = None,
-                  seed_path: Path | None = None, approval_secret: str | None = None) -> MCPServer:
+                  seed_path: Path | None = None, approval_secret: str | None = None,
+                  service_key: str | None = None, on_behalf_of: str | None = None) -> MCPServer:
+    """Identité : soit la clé API de l'utilisateur, soit (étape 4) la clé de service du
+    backend accompagnée de l'utilisateur pour le compte duquel il agit. Dans les deux cas
+    les droits appliqués sont ceux de l'utilisateur final."""
     db_path = Path(db_path or settings.maintenance_db)
     init_db(db_path, Path(seed_path or settings.maintenance_seed))
     secret = approval_secret or settings.approval_secret
@@ -83,7 +88,11 @@ def create_server(api_key: str | None = None, db_path: Path | None = None,
 
     key_hash = hashlib.sha256((api_key or "").encode()).hexdigest()
     with connect() as db:
-        row = db.execute("SELECT * FROM users WHERE api_key_sha256 = ?", (key_hash,)).fetchone()
+        if service_key and on_behalf_of:
+            trusted = bool(settings.mcp_service_key) and hmac.compare_digest(service_key, settings.mcp_service_key)
+            row = db.execute("SELECT * FROM users WHERE user_id = ?", (on_behalf_of,)).fetchone() if trusted else None
+        else:
+            row = db.execute("SELECT * FROM users WHERE api_key_sha256 = ?", (key_hash,)).fetchone()
     user = dict(row) | {"sites": json.loads(row["sites"])} if row else None
 
     def audit(tool: str, equipment_id: str, outcome: str) -> None:
@@ -180,7 +189,9 @@ def _public(row: sqlite3.Row) -> dict:
 def main() -> None:
     # Les logs vont sur stderr : stdout est réservé au protocole MCP.
     logging.basicConfig(stream=sys.stderr, level=logging.INFO, format="%(asctime)s %(message)s")
-    create_server(api_key=os.environ.get("MAINTIDOC_API_KEY")).run("stdio")
+    create_server(api_key=os.environ.get("MAINTIDOC_API_KEY"),
+                  service_key=os.environ.get("MAINTIDOC_SERVICE_KEY"),
+                  on_behalf_of=os.environ.get("MAINTIDOC_ON_BEHALF_OF")).run("stdio")
 
 
 if __name__ == "__main__":

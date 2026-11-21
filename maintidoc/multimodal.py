@@ -162,10 +162,23 @@ def answer(question: str, photo: Image.Image | None = None,
     trace = retrieve(question, photo, analysis, reranker)
 
     llm = get_llm().with_structured_output(LLMAnswer, method="json_schema")
-    raw: LLMAnswer = llm.invoke([
+    messages = [
         SystemMessage(SYSTEM_PROMPT),
         HumanMessage(f"{_context(trace.ranked, analysis)}\n\nQUESTION : {question or 'Que montre cette photo ?'}"),
-    ])
+    ]
+    raw: LLMAnswer | None = None
+    for _ in range(2):  # le petit LLM produit parfois un JSON invalide : un nouvel essai
+        try:
+            raw = llm.invoke(messages)
+            break
+        except Exception:  # sortie non conforme au schéma, erreur transitoire d'Ollama
+            continue
+    if raw is None:
+        # Repli prudent : aucune réponse générée, donc aucune affirmation ni citation.
+        raw = LLMAnswer(answer="La génération de la réponse a échoué ; consultez les passages proposés.",
+                        uncertainty="élevée", uncertainty_reason="Sortie du modèle invalide après deux essais.",
+                        needs_clarification=True,
+                        clarification_question="Pouvez-vous reformuler votre question plus simplement ?")
 
     # Les citations sont construites par le système à partir des numéros : une
     # source inventée par le modèle est simplement ignorée.

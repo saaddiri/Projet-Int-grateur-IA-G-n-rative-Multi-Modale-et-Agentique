@@ -53,6 +53,14 @@ class Settings:
     approval_secret: str = _env("APPROVAL_SECRET", "dev-only-change-me")
     # Clé API de l'utilisateur courant, transmise au serveur MCP (identité côté serveur)
     mcp_api_key: str = _env("MAINTIDOC_API_KEY", "demo-key-dupont")
+    # Étape 4 : clé de service du backend auprès du serveur MCP (délégation d'identité),
+    # secret partagé bot -> backend, jeton du bot Telegram, limites d'appels
+    mcp_service_key: str = _env("MCP_SERVICE_KEY", "")
+    bot_shared_secret: str = _env("BOT_SHARED_SECRET", "")
+    telegram_bot_token: str = _env("TELEGRAM_BOT_TOKEN", "")
+    api_base_url: str = _env("MAINTIDOC_API_URL", "http://localhost:8000")
+    rate_limit_per_minute: int = int(_env("RATE_LIMIT_PER_MINUTE", "20"))
+    llm_rate_limit_per_minute: int = int(_env("LLM_RATE_LIMIT_PER_MINUTE", "4"))
     maintenance_seed: Path = field(default_factory=lambda: ROOT_DIR / "data" / "maintenance" / "seed.json")
 
     # Stockage local des images extraites (servies dans l'interface)

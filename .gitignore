@@ -18,5 +18,5 @@ uploads/
 .DS_Store
 Thumbs.db
 
-# Poids des modèles adaptés (la fiche de version models/*.json est versionnée)
+# Poids des modÃ¨les adaptÃ©s (la fiche de version models/*.json est versionnÃ©e)
 models/*/
