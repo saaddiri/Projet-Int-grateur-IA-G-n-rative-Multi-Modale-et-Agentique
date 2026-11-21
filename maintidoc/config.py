@@ -48,8 +48,21 @@ class Settings:
 
     describe_images: bool = _env("DESCRIBE_IMAGES", "1") == "1"
 
+    # Étape 3 : service de maintenance simulé (MCP) et approbation humaine
+    # Secret partagé entre l'application (émission des jetons) et le serveur MCP (vérification).
+    approval_secret: str = _env("APPROVAL_SECRET", "dev-only-change-me")
+    # Clé API de l'utilisateur courant, transmise au serveur MCP (identité côté serveur)
+    mcp_api_key: str = _env("MAINTIDOC_API_KEY", "demo-key-dupont")
+    maintenance_seed: Path = field(default_factory=lambda: ROOT_DIR / "data" / "maintenance" / "seed.json")
+
     # Stockage local des images extraites (servies dans l'interface)
     storage_dir: Path = field(default_factory=lambda: ROOT_DIR / "storage")
+
+    @property
+    def maintenance_db(self) -> Path:
+        path = Path(_env("MAINTENANCE_DB", str(self.storage_dir / "maintenance.db")))
+        path.parent.mkdir(parents=True, exist_ok=True)
+        return path
 
     @property
     def images_dir(self) -> Path:

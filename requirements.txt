@@ -14,6 +14,8 @@ pillow==13.0.0
 langchain==1.5.2
 langchain-core==1.8.4
 langchain-ollama==1.1.0
+langgraph==1.2.24
+mcp==2.3.0
 ollama==0.6.3
 streamlit==1.67.0
 python-dotenv==1.2.4
