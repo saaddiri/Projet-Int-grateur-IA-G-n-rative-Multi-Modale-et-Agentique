@@ -85,8 +85,11 @@ L'état (`MaintiDocState`) est conservé par le checkpointer entre l'interruptio
 ## 5. Démonstration de bout en bout (L3.6)
 
 `python -m scripts.demo_workflow --auto` (décisions humaines simulées ; sans `--auto`, elles sont
-demandées au clavier). Dans Streamlit : mode « Workflow agentique (LangGraph + MCP) », choix de
-l'utilisateur de démonstration dans la barre latérale, formulaire d'approbation modifiable.
+demandées au clavier). Dans Streamlit (depuis l'étape 4, via le backend et connexion par clé
+API) : mode « Workflow ticket (LangGraph + MCP) » ; le bouton d'approbation porte sur le contenu
+affiché, identifié par son empreinte. La modification du brouillon avant approbation reste
+possible au niveau du graphe (`Command(resume={"action": "approve", "title": ..., "description": ...})`,
+utilisé par `scripts/demo_workflow.py` et les tests).
 
 Résultats observés (CPU, qwen2.5:3b, base de maintenance neuve) :
 

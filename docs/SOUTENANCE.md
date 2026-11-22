@@ -32,10 +32,12 @@ Préparation : `docker compose --profile telegram up -d`, document indexé, comp
 | 10 | `/tickets CNV-310` | refusé : site non autorisé |
 | 11 | depuis un 2e compte non lié : `/history CMP-101` | refusé : compte non associé |
 | 12 | compte lié à `stagiaire.leroy` : `/create_ticket CMP-101 fuite` | refusé : rôle lecteur |
+| 13 | `tech.dupont` : `/ask Que faire en cas de vibrations au démarrage du CMP-101 ?` | réponse tirée du manuel CMP-101 (silentblocs, accouplement, mesure vibratoire) |
+| 14 | `stagiaire.leroy` : même question | manuel invisible pour un lecteur : clarification, aucune citation du manuel |
 
 Plan B sans Telegram (réseau indisponible) : mêmes étapes avec `pytest tests/test_etape4.py -v`
 (chaîne bot → API → LangGraph → MCP), `python -m scripts.demo_workflow` et l'interface
-Streamlit (mode « Workflow agentique »).
+Streamlit (mode « Workflow ticket »).
 
 ## 3. Questions probables et éléments de réponse
 

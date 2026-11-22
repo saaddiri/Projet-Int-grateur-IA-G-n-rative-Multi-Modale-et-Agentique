@@ -60,5 +60,15 @@ le bot vous demande de patienter.
 
 ## 6. Interface Web
 
-`http://<serveur>:8501` : mêmes fonctions (question, photo, workflow de ticket avec
-formulaire d'approbation), pour la démonstration et le poste fixe.
+`http://<serveur>:8501` : connectez-vous avec votre clé API. Mêmes droits que sur Telegram.
+Modes : assistant (question + photo), workflow de ticket (brouillon puis approbation du
+contenu affiché), historique et tickets, agent LangChain, RAG simple. La barre latérale
+liste les documents que vous êtes autorisé à consulter ; un superviseur peut y ajouter un PDF
+en choisissant les rôles et sites autorisés.
+
+## 7. Documents visibles
+
+Vous ne voyez et ne recevez en citation que les documents autorisés pour votre rôle et vos
+sites (par exemple, le manuel du compresseur CMP-101 est réservé aux techniciens et
+superviseurs de l'atelier A). Si une réponse indique que la documentation ne couvre pas votre
+demande alors qu'un document existe, demandez l'accès à votre superviseur.

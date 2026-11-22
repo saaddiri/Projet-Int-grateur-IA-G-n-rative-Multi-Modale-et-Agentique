@@ -54,12 +54,12 @@ Détails, schéma du graphe et résultats : [`docs/WORKFLOW_ETAPE3.md`](docs/WOR
 | L3.3 Client MCP intégré | [`maintidoc/mcp_client.py`](maintidoc/mcp_client.py) (stdio, clé API de l'utilisateur) |
 | L3.4 Brouillons de tickets | nœud `rediger_brouillon` (sortie Pydantic `TicketDraft`, références documentaires, tickets similaires) |
 | L3.5 Validation humaine et contrôles d'accès | `interrupt()` LangGraph + [`maintidoc/approval.py`](maintidoc/approval.py) (jeton HMAC) + contrôles côté serveur (clé API, site, rôle, idempotence, audit) |
-| L3.6 Démonstration de bout en bout | [`scripts/demo_workflow.py`](scripts/demo_workflow.py) et mode « Workflow agentique » de [`app.py`](app.py) |
+| L3.6 Démonstration de bout en bout | [`scripts/demo_workflow.py`](scripts/demo_workflow.py) et mode « Workflow ticket » de [`app.py`](app.py) |
 
 ```bash
 python -m scripts.demo_workflow          # approbations demandées au clavier (--auto : simulées)
 pytest tests/test_etape3.py              # contrôles d'accès, approbation, idempotence, transitions
-streamlit run app.py                     # mode « Workflow agentique (LangGraph + MCP) »
+streamlit run app.py                     # mode « Workflow ticket (LangGraph + MCP) » (backend requis)
 ```
 
 ## Étape 2 — Multimodalité et fine-tuning
@@ -80,7 +80,7 @@ streamlit run app.py                     # mode « Workflow agentique (LangGraph
 | L2.3 Jeu de données d'adaptation | [`scripts/build_dataset.py`](scripts/build_dataset.py) → [`data/reranker/`](data/reranker/) (questions FR/EN générées puis vérifiées, négatifs difficiles) |
 | L2.4 Reranker adapté et versionné | [`scripts/train_reranker.py`](scripts/train_reranker.py) → `models/reranker-maintidoc-v1/` + fiche [`models/reranker-maintidoc-v1.json`](models/reranker-maintidoc-v1.json) |
 | L2.5 Rapport comparatif | [`docs/RAPPORT_RERANKER.md`](docs/RAPPORT_RERANKER.md) — nDCG@5, MRR@10 sans reranker / initial / adapté |
-| L2.6 Application V2 texte + photo | mode « Multimodal V2 » de [`app.py`](app.py) |
+| L2.6 Application V2 texte + photo | mode « Assistant (texte + photo) » de [`app.py`](app.py) |
 
 ### Reproduire l'étape 2
 
@@ -90,10 +90,24 @@ streamlit run app.py                     # mode « Workflow agentique (LangGraph
 python -m scripts.build_dataset --per-lang 4 --negatives 5   # jeu de données (≈ 45 min sur CPU)
 python -m scripts.train_reranker                               # fine-tuning (≈ 20 min sur CPU)
 python -m scripts.eval_reranker                                # métriques -> data/reranker/eval_test.json
-streamlit run app.py                                           # mode « Multimodal V2 »
+streamlit run app.py                                           # mode « Assistant (texte + photo) » (backend requis)
 ```
 
 ## Étape 1 — RAG agentique multimodal
+
+| Livrable | Réalisation |
+|---|---|
+| L1.1 Note de cadrage et architecture | [`docs/NOTE_CADRAGE.md`](docs/NOTE_CADRAGE.md) (dont le choix PGVector plutôt que Qdrant) |
+| L1.2 Pipeline d'ingestion | [`maintidoc/extraction.py`](maintidoc/extraction.py), [`maintidoc/indexing.py`](maintidoc/indexing.py), [`scripts/ingest.py`](scripts/ingest.py) |
+| L1.3 Index et métadonnées | PGVector (source, page, type, légende, droits d'accès par document : [`data/documents_acl.json`](data/documents_acl.json)) |
+| L1.4 API et chaîne RAG | [`maintidoc/rag.py`](maintidoc/rag.py), [`maintidoc/agent.py`](maintidoc/agent.py), exposés par [`maintidoc/api.py`](maintidoc/api.py) (`/rag`, `/agent`, `/ask`) |
+| L1.5 Interface Streamlit | [`app.py`](app.py) (client du backend, connexion par clé API) |
+| L1.6 Rapport de tests documentaires et d'accès | [`docs/RAPPORT_TESTS_ETAPE1.md`](docs/RAPPORT_TESTS_ETAPE1.md) |
+
+Corpus de démonstration : l'article « Attention Is All You Need » (recommandé par le sujet)
+et un manuel de maintenance **fictif** du compresseur CMP-101
+([`scripts/make_demo_manual.py`](scripts/make_demo_manual.py)), réservé aux techniciens et
+superviseurs de l'atelier A, qui relie la documentation aux équipements simulés.
 
 ### Architecture
 
@@ -107,7 +121,7 @@ streamlit run app.py                                           # mode « Multimo
                                         Embeddings multilingues ──► PGVector (texte)
 
                  ┌───────────────────── Requête ──────────────────────┐
-  Streamlit ──► Agent LangChain (Qwen2.5 via Ollama)
+  Streamlit ──► FastAPI ──► Agent LangChain (Qwen2.5 via Ollama)
                    ├─ search_text    ──► PGVector (passages)
                    ├─ search_tables  ──► PGVector (tableaux)
                    └─ search_figures ──► CLIP + descriptions VLM
@@ -123,13 +137,14 @@ streamlit run app.py                                           # mode « Multimo
 | Base vectorielle | PostgreSQL 16 + pgvector (`PGVectorStore` de LlamaIndex) | vecteurs + métadonnées (source, page, type, légende) |
 | LLM | `qwen2.5:3b` via Ollama | génération et appel d'outils |
 | Agent | LangChain `create_agent` | choix des outils, gestion du contexte (historique glissant) |
-| Interface | Streamlit | chargement du PDF, questions, réponses et sources |
+| Interface | Streamlit (via le backend FastAPI) | chargement du PDF (superviseurs), questions, réponses et sources |
 
 ### Structure du dépôt
 
 ```
 maintidoc/
   config.py       configuration (.env)
+  access.py       filtrage des documents selon le rôle et le site
   extraction.py   extraction texte / tableaux / images (LlamaIndex + PyMuPDF)
   images.py       encodeur CLIP et descriptions VLM
   store.py        tables PGVector (LlamaIndex PGVectorStore)
@@ -148,11 +163,11 @@ maintidoc/
   identity.py     comptes, liaison Telegram, brouillons en attente (étape 4)
   bot/            bot Telegram (étape 4)
   versioning.py   versions des prompts et modèles (étape 4)
-app.py            interface Streamlit
-scripts/          ingestion, questions, jeu de données, entraînement, démonstrations
-tests/            tests d'extraction, du pipeline V2 et de l'étape 3
-data/             PDF de démonstration (« Attention Is All You Need »)
-docs/             note technique
+app.py            client Web Streamlit (appelle le backend)
+scripts/          ingestion, questions, jeu de données, entraînement, démonstrations, évaluation
+tests/            tests d'extraction, du pipeline V2, des étapes 3 et 4
+data/             PDF de démonstration, règles d'accès, données de maintenance fictives, résultats
+docs/             cadrage, notes, rapports, guides, soutenance
 ```
 
 ### Installation
@@ -186,13 +201,16 @@ python -m scripts.ingest data/attention_is_all_you_need.pdf
 # Poser des questions en ligne de commande
 python -m scripts.ask "Que montre la figure 1 ?" "Quel score BLEU obtient le Transformer (big) en anglais-allemand ?"
 
-# Interface web
+# Backend puis interface web
+uvicorn maintidoc.api:app --port 8000
 streamlit run app.py
 ```
 
-Dans l'interface : charger un PDF dans la barre latérale, cliquer sur **Indexer le document**,
-puis poser des questions. Chaque réponse affiche les outils appelés par l'agent et les sources
-(page, extrait, image le cas échéant).
+Dans l'interface : se connecter avec une clé API (comptes de démonstration
+`demo-key-dupont`, `demo-key-martin`, `demo-key-leroy`), puis poser des questions (modes
+« Agent LangChain », « RAG simple » ou « Assistant »). Un superviseur charge un PDF depuis la
+barre latérale en choisissant qui peut le consulter. Chaque réponse affiche les outils appelés
+par l'agent et les sources (page, extrait, image le cas échéant).
 
 ### Tests
 

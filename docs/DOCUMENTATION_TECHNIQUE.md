@@ -8,11 +8,11 @@ Vue d'ensemble de l'application intégrée (étapes 1 à 4). Détails par étape
 
 ```
  Telegram ──► bot (python-telegram-bot) ──┐  X-Bot-Secret + identifiant Telegram
- Navigateur ─► Streamlit ─────────────────┤
- Client Web / scripts ────────────────────┤  Authorization: Bearer <clé API>
+ Navigateur ─► client Web Streamlit ──────┤  Authorization: Bearer <clé API> (connexion)
+ Scripts / autres clients ────────────────┤  Authorization: Bearer <clé API>
                                           ▼
                          Backend FastAPI (maintidoc/api.py)
-          identités · limites d'appels · journal minimal · validation des entrées
+   identités · filtrage des documents · limites d'appels · journal · validation
                │                       │                          │
      RAG multimodal V2          Graphe LangGraph            Client MCP
   (étapes 1-2 : PGVector,   (étape 3 : brouillon,      (clé de service +
@@ -29,6 +29,8 @@ Vue d'ensemble de l'application intégrée (étapes 1 à 4). Détails par étape
 | Module | Rôle |
 |---|---|
 | `maintidoc/api.py` | backend FastAPI : routes, authentification, limites, journal |
+| `maintidoc/access.py` | filtrage des documents selon le rôle et le site (règles `data/documents_acl.json`) |
+| `app.py` | client Web Streamlit : connexion par clé API, toutes les actions via le backend |
 | `maintidoc/identity.py` | utilisateurs (référentiel), liaison des comptes Telegram, brouillons en attente |
 | `maintidoc/bot/commands.py` | logique des commandes (testable sans Telegram) |
 | `maintidoc/bot/telegram_bot.py` | adaptateur Telegram (polling, photos, découpage des messages) |
@@ -45,7 +47,11 @@ Vue d'ensemble de l'application intégrée (étapes 1 à 4). Détails par étape
 | GET | `/health`, `/version` | aucune | — | état, versions |
 | POST | `/link` | secret du bot | 5 essais/min | associe un compte Telegram avec un code |
 | GET | `/me` | oui | — | identité et rôle |
-| POST | `/ask` | oui | oui | réponse structurée sourcée |
+| POST | `/ask` | oui | oui | réponse structurée sourcée (pipeline V2) |
+| POST | `/rag` | oui | oui | RAG simple de l'étape 1 |
+| POST | `/agent`, `/agent/reset` | oui | oui | agent LangChain de l'étape 1 (historique par utilisateur) |
+| GET | `/documents` | oui | — | documents que l'utilisateur peut consulter |
+| POST | `/documents` | superviseur | — | ajout d'un PDF avec sa règle d'accès, puis indexation |
 | POST | `/analyze` | oui | oui | photo (≤ 8 Mo, image vérifiée) + question |
 | GET | `/equipment/{id}/history` | oui | — | historique (MCP) |
 | GET | `/equipment/{id}/tickets` | oui | — | tickets ouverts (MCP) |
@@ -65,6 +71,9 @@ Vue d'ensemble de l'application intégrée (étapes 1 à 4). Détails par étape
 | Doublons (double clic, rejeu) | `approval_id` unique + contenu identique ouvert ; verrou d'état « en_cours » | tests, évaluation |
 | Injection de prompt (question, historique, documents) | le LLM n'a ni outil d'action ni secret dans son contexte ; contenus présentés comme données ; contrôles hors LLM | évaluation (15 injections) |
 | Délégation forgée | clé de service comparée en temps constant par le serveur MCP | évaluation |
+| Accès à un document non autorisé | filtre `source IN (documents autorisés)` ajouté à chaque requête PGVector (texte, tableaux, figures, CLIP) ; document sans règle réservé aux superviseurs ; règle enregistrée avant indexation | tests, évaluation (19 scénarios) |
+| Contournement par l'interface Web | Streamlit sans logique métier : tout passe par le backend authentifié | revue, test manuel |
+| Base redémarrée (connexions mortes) | `pool_pre_ping` sur les connexions PostgreSQL | incident observé et corrigé |
 | Abus / surcharge | 20 requêtes/min et 4 requêtes LLM/min par utilisateur ; tailles maximales | tests, évaluation |
 | Fuite de secrets | `.env` hors dépôt et hors image ; jetons jamais journalisés ; logs `httpx` du bot réduits (URL contenant le jeton) | revue |
 | Exposition réseau | ports liés à 127.0.0.1 ; utilisateur non privilégié dans l'image | revue |
@@ -79,16 +88,15 @@ Journalisation minimale : backend (méthode, route, utilisateur, statut, durée)
 | `tests/test_extraction.py` | extraction texte / tableaux / images |
 | `tests/test_v2.py` | fusion RRF, reranking, sorties structurées |
 | `tests/test_etape3.py` | jetons, serveur MCP, transitions LangGraph |
-| `tests/test_etape4.py` | intégration bot → API → LangGraph → MCP : identités, accès, approbation, injection, limites, versions |
+| `tests/test_etape4.py` | intégration bot → API → LangGraph → MCP : identités, accès, approbation, injection, limites, versions, filtrage des documents |
 
 ## 6. Limites connues
 
 - CPU uniquement : 1 à 7 minutes par requête avec IA ; un GPU ou un modèle quantifié plus
   petit est nécessaire pour un usage réel à plusieurs.
 - Corpus de démonstration d'un seul document, sans rapport avec les équipements simulés.
-- Filtrage des documents par autorisation : prévu par la conception (métadonnées), non
-  appliqué ici car tous les utilisateurs partagent le même document de démonstration.
+- Filtrage des documents : par document entier (pas par page ni par passage).
 - Limites d'appels en mémoire (une seule instance du backend).
 - Le serveur MCP est relancé à chaque appel (≈ 2,5 s).
-- Le bot n'a pas été testé contre l'API Telegram réelle dans ce dépôt (nécessite un jeton
-  @BotFather) : sa logique est testée de bout en bout jusqu'au backend.
+- Bot : démarré avec un vrai bot Telegram, liaison de compte vérifiée ; les autres commandes
+  restent à tester manuellement depuis Telegram (leur logique est testée jusqu'au backend).

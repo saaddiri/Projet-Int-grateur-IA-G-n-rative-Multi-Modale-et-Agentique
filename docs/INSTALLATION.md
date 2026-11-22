@@ -37,7 +37,7 @@ docker compose --profile ollama up -d        # + Ollama en conteneur (mettre OLL
 |---|---|---|
 | `pgvector` | index vectoriel (PostgreSQL 16 + pgvector) | 5433 |
 | `api` | backend FastAPI (identités, RAG, workflow, client MCP) | 8000 (`/docs` : documentation OpenAPI) |
-| `web` | interface Streamlit | 8501 |
+| `web` | client Web Streamlit (appelle `api`, connexion par clé API) | 8501 |
 | `bot` | bot Telegram (profil `telegram`) | — (connexion sortante vers Telegram) |
 | `ollama` | LLM / VLM (profil `ollama`, facultatif) | 11434 |
 
@@ -51,8 +51,12 @@ LangGraph), `uploads`, `hf-cache` (modèles Hugging Face, téléchargés au prem
 ## 4. Premier démarrage
 
 ```bash
-# indexer le document de démonstration (dans le conteneur ou en local)
+# indexer les documents de démonstration (dans le conteneur ou en local)
 docker compose exec api python -m scripts.ingest data/attention_is_all_you_need.pdf
+docker compose exec api python -m scripts.make_demo_manual        # manuel fictif du CMP-101
+docker compose exec api python -m scripts.ingest data/manuel_CMP-101.pdf
+# règles d'accès aux documents : data/documents_acl.json (les nouveaux PDF ajoutés par
+# l'interface reçoivent la règle choisie par le superviseur)
 # reranker adapté : poids non versionnés, à régénérer (≈ 20 min CPU) ou RERANKER=base
 python -m scripts.train_reranker
 # associer un compte Telegram à un utilisateur (code à usage unique, 10 min)
@@ -71,9 +75,10 @@ pip install torch==2.15.0 --index-url https://download.pytorch.org/whl/cpu
 pip install -r requirements.txt
 docker compose up -d pgvector
 python -m scripts.ingest data/attention_is_all_you_need.pdf
-uvicorn maintidoc.api:app --port 8000                     # backend
+python -m scripts.make_demo_manual && python -m scripts.ingest data/manuel_CMP-101.pdf
+uvicorn maintidoc.api:app --port 8000                     # backend (obligatoire pour l'interface et le bot)
 python -m maintidoc.bot.telegram_bot                      # bot
-streamlit run app.py                                      # interface
+streamlit run app.py                                      # client Web (connexion par clé API)
 pytest                                                    # tests
 python -m scripts.evaluate --quick                        # évaluation sans LLM (≈ 5 min)
 ```

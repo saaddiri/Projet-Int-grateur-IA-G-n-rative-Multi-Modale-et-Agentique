@@ -11,28 +11,31 @@ Résultats **observés** sur une seule machine et un petit corpus ; ce ne sont p
   sous-processus, RAG multimodal V2, reranker adapté, Qwen2.5 3B et Qwen2.5-VL 3B via Ollama.
   Bases de maintenance, d'identités et de checkpoints temporaires.
 - Machine : 4 cœurs, 15,4 Go de RAM, **sans GPU** (Windows 10).
-- Corpus : un seul document (« Attention Is All You Need », 29 éléments indexés).
+- Corpus : « Attention Is All You Need » (29 éléments, accessible à tous) et le manuel fictif
+  du compresseur CMP-101 (4 éléments, réservé aux techniciens et superviseurs de l'atelier A).
 
-**131 scénarios** (l'objectif indicatif était d'environ 150) :
+**150 scénarios** :
 
 | Catégorie | Scénarios | Réussis | Latence médiane | Latence p95 |
 |---|---|---|---|---|
 | Contrôle d'accès (matrice utilisateurs × équipements × outils, authentification, délégation) | 34 | **34** | 3,9 s | 5,2 s |
 | Approbation (jetons falsifiés, rejeu, brouillons réels, autre utilisateur, annulation, rôle) | 19 | **19** | 3,1 s | voir §3 |
 | Entrées et limites (validation, photos, liaison de comptes, force brute, quota LLM) | 10 | **10** | 0,2 s | 2,4 s |
-| Recherche documentaire (passage attendu parmi les 5 sources) | 30 | 27 | 3,2 s | 4,1 s |
-| Réponse documentaire complète (`/ask`) | 10 | 9 | 101 s | 167 s |
-| Hors corpus (clarification ou absence de source attendue) | 10 | 9 | 116 s | 129 s |
+| Recherche documentaire (passage attendu parmi les 5 sources) | 30 | 27 | 4,2 s | 5,0 s |
+| Accès aux documents (filtrage par rôle et site : recherche, liste, ajout, réponses) | 19 | **19** | 0,1 s | 227 s |
+| Réponse documentaire complète (`/ask`) | 10 | 9 | 119 s | 167 s |
+| Hors corpus (clarification ou absence de source attendue) | 10 | 8 | 101 s | 126 s |
 | Injection de prompt (fuite de secret, création de ticket) | 16 | **16** | 80 s | 112 s |
 | Photo (`/analyze`) : nette → réponse sourcée ; floue → clarification | 2 | 2 | 337 s | 387 s |
-| **Total** | **131** | **126** | | |
+| **Total** | **150** | **144** | | |
 
 ## 2. Qualité des citations
 
 | Mesure | Valeur |
 |---|---|
 | Passage attendu parmi les 5 sources retenues (30 questions de test) | 0,90 |
-| MRR@5 du passage attendu | 0,79 |
+| Page attendue parmi les 5 sources | 0,93 |
+| MRR@5 du passage attendu | 0,81 |
 | Réponses avec au moins une citation (10 questions) | 0,90 |
 | Réponses citant la page du passage attendu | 0,60 |
 | Citations rattachées automatiquement (LLM sans numéro de source) | **100 %** |
@@ -78,6 +81,7 @@ sont nécessaires pour descendre sous les 10 s par question.
 | Approbation d'un autre contenu, du brouillon d'un autre utilisateur, après annulation ; rôle lecteur | 5 | tous refusés |
 | Force brute sur les codes de liaison, quota LLM | 2 | 429 renvoyé |
 | 15 injections de prompt (prompt système, secrets, clés API, création de tickets, commandes système) | 16 | aucune fuite de secret, aucun ticket créé |
+| Filtrage des documents : sources hors droits jamais renvoyées, manuel réservé invisible pour un lecteur, ajout réservé aux superviseurs | 19 | tous conformes |
 
 Les secrets ne figurent jamais dans le contexte du LLM, et aucune action ne dépend de sa
 sortie sans approbation humaine : les injections ne peuvent donc ni exfiltrer de secret ni
@@ -94,22 +98,29 @@ a été vérifiée.
   client), évaluation qui enregistre au fil de l'eau. Lors de l'exécution finale des
   16 injections, aucune erreur 500 n'est apparue. La cause exacte de la seconde erreur
   n'a pas été isolée : l'incident reste donc ouvert.
-- Les résultats des catégories accès, approbation, entrées et hors corpus proviennent du
-  journal de la première exécution complète, interrompue à l'injection 9. Les scénarios y
-  sont conservés (réussite, latence), sans leurs détails ; les autres catégories ont été
-  rejouées en entier.
+- Les catégories accès, approbation et entrées proviennent du journal de la première
+  exécution complète (21/11), interrompue à l'injection 9 : scénarios conservés (réussite,
+  latence) sans leurs détails. Injections et photos ont été rejouées le 21/11 ; recherche,
+  réponses documentaires, hors corpus et accès aux documents le 22/11, après l'ajout du
+  manuel CMP-101 et du filtrage documentaire.
+- **Base PostgreSQL redémarrée** (22/11) : une connexion perdue a réinitialisé le serveur, et
+  le backend conservait des connexions mortes (erreur 500 puis requête bloquée). Correction :
+  vérification des connexions avant usage (`pool_pre_ping`). C'est peut-être la cause des
+  erreurs 500 de la nuit précédente, sans certitude.
 
 ## 6. Limites
 
-- 131 scénarios au lieu d'environ 150 ; 30 questions documentaires et un seul document : les
-  taux ont une forte incertitude (une question représente 3 à 10 points).
-- Équipements et historique fictifs, sans rapport avec le document indexé : les tickets ne
-  citent aucune documentation pertinente dans cette démonstration.
-- Le seuil de pertinence (-3,0) reste un compromis : une question hors corpus (« numéro de
-  série de la machine de la ligne 3 ») a obtenu une réponse avec sources ; la photo floue a
-  obtenu un score de -2,86, juste au-dessus du seuil, et c'est le LLM qui a demandé la
-  clarification.
-- Le bot n'a pas été évalué contre l'API Telegram réelle (jeton @BotFather nécessaire) ; sa
-  logique est testée jusqu'au backend.
+- 30 questions documentaires et deux documents : les taux ont une forte incertitude (une
+  question représente 3 à 10 points).
+- Le manuel CMP-101 est fictif et court (4 éléments) : il démontre le lien documentation /
+  équipements et le filtrage, pas la qualité sur un vrai corpus de maintenance.
+- Le seuil de pertinence (-3,0) reste un compromis : deux questions hors corpus ont obtenu une
+  réponse avec source, avec un score de -2,96 (« numéro de série de la machine de la ligne 3 »,
+  « fréquence de remplacement du filtre à air du compresseur », que le manuel ne traite pas) ;
+  la photo floue a obtenu -2,86 et c'est le LLM qui a demandé la clarification. Il faudrait
+  relever le seuil ou vérifier que la réponse figure dans les passages cités.
+- Le bot a été démarré avec un vrai bot Telegram et la liaison de compte (`/start <code>`) a
+  fonctionné ; les autres commandes depuis Telegram restent à tester manuellement (scénario
+  dans [SOUTENANCE.md](SOUTENANCE.md)). Leur logique est testée de bout en bout jusqu'au backend.
 - Mesures obtenues pendant que d'autres tâches occupaient la machine (construction de
   l'image Docker) : les latences maximales sont pessimistes.
