@@ -143,6 +143,15 @@ async def access_log(request: Request, call_next):
     return response
 
 
+@app.exception_handler(Exception)
+def unexpected_error(request: Request, exc: Exception) -> JSONResponse:
+    # Trace complète dans le journal du serveur ; message générique pour le client
+    # (aucun détail interne ni contenu de la requête renvoyé).
+    log.error("erreur interne sur %s (user=%s)", request.url.path, getattr(request.state, "user_id", "-"),
+              exc_info=exc)
+    return JSONResponse(status_code=500, content={"detail": "Erreur interne : réessayez plus tard."})
+
+
 @app.exception_handler(mcp_client.MCPToolError)
 def mcp_refusal(_: Request, exc: mcp_client.MCPToolError) -> JSONResponse:
     return JSONResponse(status_code=403, content={"detail": str(exc)})

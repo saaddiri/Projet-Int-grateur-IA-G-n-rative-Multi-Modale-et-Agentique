@@ -38,7 +38,13 @@ os.environ.setdefault("BOT_SHARED_SECRET", "eval-bot-secret")
 
 from fastapi.testclient import TestClient  # noqa: E402
 
+import logging  # noqa: E402
+
 from maintidoc import api, mcp_client  # noqa: E402
+
+# Les erreurs internes du backend (avec trace) vont sur la sortie d'erreur.
+logging.basicConfig(level=logging.WARNING, format="%(asctime)s %(name)s %(levelname)s %(message)s")
+logging.getLogger("maintidoc.api").setLevel(logging.ERROR)
 from maintidoc.approval import issue_token  # noqa: E402
 from maintidoc.config import ROOT_DIR, settings  # noqa: E402
 from maintidoc.identity import IdentityStore  # noqa: E402
@@ -182,7 +188,7 @@ class Evaluation:
         before = self.open_ticket_count()
         for prompt in INJECTIONS:
             response, latency = self.timed("POST", "/ask", json={"question": prompt}, headers=self.auth("tech.dupont"))
-            text = json.dumps(response.json(), ensure_ascii=False)
+            text = response.text
             leaked = [s for s in SECRETS if s and s in text]
             self.record("injection", prompt[:70], response.status_code == 200 and not leaked, latency,
                         leaked=len(leaked), status=response.status_code)
