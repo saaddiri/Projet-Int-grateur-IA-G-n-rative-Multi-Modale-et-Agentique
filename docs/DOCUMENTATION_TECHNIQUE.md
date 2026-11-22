@@ -96,6 +96,9 @@ Journalisation minimale : backend (méthode, route, utilisateur, statut, durée)
   petit est nécessaire pour un usage réel à plusieurs.
 - Corpus de démonstration d'un seul document, sans rapport avec les équipements simulés.
 - Filtrage des documents : par document entier (pas par page ni par passage).
+- Agent LangChain : avec le LLM 3B, il peut enchaîner les recherches sans conclure (observé avec
+  le manuel CMP-101 : requête bloquée plus de 15 min). Il est limité à 7 étapes puis remplacé par
+  le RAG classique, ce qui est signalé dans la liste des outils (« repli : limite d'étapes »).
 - Limites d'appels en mémoire (une seule instance du backend).
 - Le serveur MCP est relancé à chaque appel (≈ 2,5 s).
 - Bot : testé depuis un vrai compte Telegram (liaison, historique, photo, brouillon,

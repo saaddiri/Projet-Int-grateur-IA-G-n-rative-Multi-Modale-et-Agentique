@@ -219,3 +219,22 @@ def test_documents_par_role_et_ajout_reserve(env, monkeypatch):
     response = client.post("/documents", headers={"Authorization": "Bearer demo-key-dupont"},
                            files={"pdf": ("x.pdf", b"%PDF-1.4", "application/pdf")})
     assert response.status_code == 403
+
+
+def test_agent_limite_etapes_puis_repli(monkeypatch):
+    """Un agent qui enchaîne les outils sans conclure est interrompu puis remplacé par le RAG."""
+    from langgraph.errors import GraphRecursionError
+
+    from maintidoc import agent as agent_module
+    from maintidoc.rag import Answer
+
+    class LoopingGraph:
+        def invoke(self, state, config=None):
+            assert config["recursion_limit"] == agent_module.MAX_AGENT_STEPS
+            raise GraphRecursionError("trop d'étapes")
+
+    monkeypatch.setattr(agent_module, "answer_with_rag", lambda q: Answer(text="réponse RAG"))
+    bot = agent_module.MaintiDocAgent.__new__(agent_module.MaintiDocAgent)
+    bot.graph, bot.history = LoopingGraph(), []
+    answer = bot.ask("question")
+    assert answer.text == "réponse RAG" and "limite d'étapes" in answer.tool_calls[0]

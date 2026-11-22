@@ -15,11 +15,16 @@ from langchain.agents import create_agent
 from langchain.agents.middleware import ModelRequest, ModelResponse, wrap_model_call
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 from langchain_core.tools import tool
+from langgraph.errors import GraphRecursionError
 
 from .rag import Answer, answer_with_rag, get_llm
 from .retrieval import Hit, search_images, search_tables, search_text
 
 MAX_HISTORY_MESSAGES = 6  # 3 derniers échanges question/réponse
+# Nombre maximal d'étapes du graphe de l'agent (appels LLM + exécutions d'outils) : au-delà,
+# le petit modèle tourne en rond et chaque étape coûte 1 à 2 min sur CPU. 7 étapes permettent
+# jusqu'à 3 recherches suivies d'une réponse ; sinon, repli sur le RAG classique.
+MAX_AGENT_STEPS = 7
 
 AGENT_SYSTEM_PROMPT = """Tu es MaintiDoc, un assistant documentaire pour techniciens.
 Tu disposes d'outils de recherche dans les documents indexés :
@@ -117,7 +122,11 @@ class MaintiDocAgent:
         token = _collected.set(collected)
         try:
             messages = self.history[-MAX_HISTORY_MESSAGES:] + [HumanMessage(question)]
-            result = self.graph.invoke({"messages": messages})
+            limit_reached = False
+            try:
+                result = self.graph.invoke({"messages": messages}, {"recursion_limit": MAX_AGENT_STEPS})
+            except GraphRecursionError:
+                result, limit_reached = {"messages": messages}, True  # trop d'étapes : repli ci-dessous
         finally:
             _collected.reset(token)
 
@@ -132,7 +141,8 @@ class MaintiDocAgent:
         if not tool_calls or final is None:
             # Repli : le petit modèle n'a pas utilisé d'outil -> RAG classique.
             answer = answer_with_rag(question)
-            answer.tool_calls = ["(repli) recherche globale texte + tableaux + images"]
+            reason = "limite d'étapes de l'agent atteinte" if limit_reached else "aucun outil utilisé"
+            answer.tool_calls = [f"(repli : {reason}) recherche globale texte + tableaux + images"]
         else:
             answer = Answer(text=str(final.content), sources=collected, tool_calls=tool_calls)
 
