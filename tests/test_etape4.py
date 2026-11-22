@@ -172,3 +172,50 @@ def test_versions_figees():
     from maintidoc.versioning import check_lock
 
     assert check_lock() == [], "prompt ou modèle modifié : lancer python -m scripts.lock_versions"
+
+
+# --------------------------------------------------------------------------- filtrage des documents
+
+def test_regles_acces_documents(tmp_path):
+    from maintidoc.access import can_read, load_acl, save_rule
+
+    acl_file = tmp_path / "acl.json"
+    save_rule("manuel.pdf", ["technicien"], ["ATELIER-A"], path=acl_file)
+    acl = load_acl(acl_file)
+    assert can_read("manuel.pdf", "technicien", ["ATELIER-A"], acl)
+    assert not can_read("manuel.pdf", "technicien", ["ATELIER-B"], acl)   # autre site
+    assert not can_read("manuel.pdf", "lecteur", ["ATELIER-A"], acl)      # rôle non autorisé
+    assert not can_read("inconnu.pdf", "technicien", ["ATELIER-A"], acl)  # défaut : superviseurs
+    assert can_read("inconnu.pdf", "superviseur", ["ATELIER-B"], acl)
+
+
+def test_filtre_applique_a_la_recherche(monkeypatch):
+    from maintidoc import retrieval
+    from maintidoc.access import restricted_to
+
+    assert retrieval.with_access(None) is None  # sans restriction : inchangé
+    with restricted_to([]):
+        assert retrieval.with_access(None) is False  # aucun document autorisé : pas de requête
+        assert retrieval.query_store(None, [0.0], 3) == []
+    with restricted_to(["a.pdf"]):
+        filters = retrieval.with_access(retrieval.type_filter(["text"]))
+        keys = [(f.key, f.value) for f in filters.filters]
+        assert ("source", ["a.pdf"]) in keys and ("content_type", ["text"]) in keys
+
+
+def test_documents_par_role_et_ajout_reserve(env, monkeypatch):
+    from fastapi.testclient import TestClient
+
+    from maintidoc import store
+
+    monkeypatch.setattr(store, "list_documents", lambda: [
+        {"source": "attention_is_all_you_need.pdf"}, {"source": "manuel_CMP-101.pdf"}, {"source": "secret.pdf"}])
+    client = TestClient(api.app)
+    visible = {u: [d["source"] for d in client.get("/documents", headers={"Authorization": f"Bearer {k}"}).json()["documents"]]
+               for u, k in (("dupont", "demo-key-dupont"), ("leroy", "demo-key-leroy"), ("martin", "demo-key-martin"))}
+    assert visible["dupont"] == ["attention_is_all_you_need.pdf", "manuel_CMP-101.pdf"]
+    assert visible["leroy"] == ["attention_is_all_you_need.pdf"]
+    assert "secret.pdf" in visible["martin"]  # document sans règle : superviseurs uniquement
+    response = client.post("/documents", headers={"Authorization": "Bearer demo-key-dupont"},
+                           files={"pdf": ("x.pdf", b"%PDF-1.4", "application/pdf")})
+    assert response.status_code == 403

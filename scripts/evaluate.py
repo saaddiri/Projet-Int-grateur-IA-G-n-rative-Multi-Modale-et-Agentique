@@ -11,6 +11,7 @@ sous-processus, LangGraph, LLM et VLM réels), sur des bases temporaires :
   approbation     brouillons réels et jetons falsifiés : création seulement si approuvé
   entrees         entrées invalides, limites d'appels, liaison de comptes
   photo           photo nette / photo floue via /analyze
+  acces_documents filtrage des documents selon le rôle et le site (recherche, liste, ajout, réponse)
 
 Usage :  python -m scripts.evaluate              (≈ 1 h sur CPU)
          python -m scripts.evaluate --quick      (sans les scénarios qui appellent le LLM)
@@ -343,6 +344,48 @@ class Evaluation:
         self.record("entrees", "limite d'appels LLM par utilisateur (429)", codes == [403, 429], 0.0, statuses=codes)
         object.__setattr__(settings, "llm_rate_limit_per_minute", 10_000)
 
+    # ------------------------------------------------------------------ accès aux documents
+    def document_access(self, with_llm: bool = True) -> None:
+        from maintidoc.access import allowed_sources, restricted_to
+        from maintidoc.retrieval import search_all
+
+        manual, paper = "manuel_CMP-101.pdf", "attention_is_all_you_need.pdf"
+        users = {"tech.dupont": ("technicien", ["ATELIER-A"]), "chef.martin": ("superviseur", ["ATELIER-A", "ATELIER-B"]),
+                 "stagiaire.leroy": ("lecteur", ["ATELIER-A"])}
+        questions = ["Que faire en cas de vibrations anormales au démarrage du compresseur ?",
+                     "Quelle est la périodicité de remplacement du séparateur d'huile ?",
+                     "Comment réagir à une alarme de température d'huile élevée ?",
+                     "Combien de couches comporte l'encodeur du Transformer ?"]
+        for user, (role, sites) in users.items():
+            allowed = allowed_sources(role, sites)
+            for question in questions:
+                start = time.perf_counter()
+                with restricted_to(allowed):
+                    sources = {hit.source for hit in search_all(question, k=6)}
+                self.record("acces_documents", f"{user} : {question[:50]} (documents autorisés uniquement)",
+                            sources <= set(allowed), time.perf_counter() - start,
+                            sources=sorted(sources), allowed=allowed)
+            response, latency = self.timed("GET", "/documents", headers=self.auth(user))
+            listed = {d["source"] for d in response.json().get("documents", [])}
+            expected = {paper, manual} if role != "lecteur" else {paper}
+            self.record("acces_documents", f"{user} : liste des documents visibles", listed == expected, latency,
+                        listed=sorted(listed))
+        for user in ("tech.dupont", "stagiaire.leroy"):
+            response, latency = self.timed("POST", "/documents", headers=self.auth(user),
+                                           files={"pdf": ("x.pdf", b"%PDF-1.4", "application/pdf")})
+            self.record("acces_documents", f"{user} : ajout de document refusé (superviseurs uniquement)",
+                        response.status_code == 403, latency, status=response.status_code)
+        if not with_llm:
+            return
+        question = {"question": "Que faire en cas de vibrations anormales au démarrage du compresseur CMP-101 ?"}
+        for user, must_cite in (("tech.dupont", True), ("stagiaire.leroy", False)):
+            response, latency = self.timed("POST", "/ask", json=question, headers=self.auth(user))
+            data = response.json() if response.status_code == 200 else {}
+            cited = {c["source"] for c in data.get("citations", [])}
+            ok = response.status_code == 200 and ((manual in cited) if must_cite else (manual not in cited and manual not in data.get("answer", "")))
+            self.record("acces_documents", f"{user} : réponse {'fondée sur' if must_cite else 'sans'} le manuel réservé",
+                        ok, latency, cited=sorted(cited), clarification=data.get("needs_clarification"))
+
     def photos(self) -> None:
         cases = [("photo nette du schéma", "schema_photo.jpg", "Que représente ce schéma ?", False),
                  ("photo floue", "photo_floue.jpg", "Que signifie ce voyant ?", True)]
@@ -393,7 +436,7 @@ def main() -> None:
     parser.add_argument("--only", help="catégories à (re)jouer, séparées par des virgules ; les autres "
                                        "résultats sont repris de data/evaluation/results.jsonl")
     args = parser.parse_args()
-    steps = ["acces", "approbation", "entrees", "doc_recherche"]
+    steps = ["acces", "approbation", "entrees", "doc_recherche", "acces_documents"]
     if not args.quick:
         steps += ["doc_reponse", "hors_corpus", "injection", "photo"]
     if args.only:
@@ -415,7 +458,8 @@ def main() -> None:
     start = time.time()
     actions = {"acces": ev.access, "approbation": lambda: ev.approvals(with_llm=not args.quick),
                "entrees": ev.inputs, "doc_recherche": ev.doc_retrieval, "doc_reponse": ev.doc_answers,
-               "hors_corpus": ev.out_of_scope, "injection": ev.injections, "photo": ev.photos}
+               "hors_corpus": ev.out_of_scope, "injection": ev.injections, "photo": ev.photos,
+               "acces_documents": lambda: ev.document_access(with_llm=not args.quick)}
     if "doc_reponse" in steps and "doc_recherche" not in steps:
         ev._doc_questions = [q for q in map(json.loads, open(ROOT_DIR / "data/reranker/questions.jsonl",
                                                              encoding="utf-8")) if q["split"] == "test"]
