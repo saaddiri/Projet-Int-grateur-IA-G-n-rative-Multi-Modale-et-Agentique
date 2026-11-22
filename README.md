@@ -13,7 +13,32 @@ avec des **références vérifiables** (document, page, type de contenu).
 | **1** | RAG agentique multimodal (LlamaIndex, PGVector, CLIP, Qwen/Ollama, LangChain, Streamlit) | ✅ livrée |
 | **2** | Multimodalité (photo + VLM, CLIP multilingue), fusion + reranking, reranker adapté, sorties Pydantic | ✅ livrée |
 | **3** | Orchestration LangGraph, serveur/client MCP, tickets avec validation humaine | ✅ livrée |
-| 4 | Client Web, bot Telegram/Discord, sécurité, déploiement | à venir |
+| **4** | Client Web, bot Telegram, sécurité, déploiement Docker Compose, évaluation | ✅ livrée |
+
+## Étape 4 — Bot Telegram, sécurité et déploiement
+
+Un technicien utilise MaintiDoc depuis Telegram : question, photo, historique, tickets,
+approbation et annulation. Le bot passe par un backend FastAPI qui authentifie le compte,
+applique les limites d'appels et agit pour le compte de l'utilisateur auprès du serveur MCP,
+lequel réapplique ses propres contrôles.
+
+| Livrable | Réalisation |
+|---|---|
+| L4.1 Bot Telegram | [`maintidoc/bot/`](maintidoc/bot/) (python-telegram-bot) : `/start /ask /analyze /history /tickets /create_ticket /approve /cancel` |
+| L4.2 Backend et identités | [`maintidoc/api.py`](maintidoc/api.py), [`maintidoc/identity.py`](maintidoc/identity.py) : clé API ou bot + liaison par code à usage unique, délégation MCP, limites, journal minimal |
+| L4.3 Docker Compose et installation | [`docker-compose.yml`](docker-compose.yml), [`Dockerfile`](Dockerfile), [`docs/INSTALLATION.md`](docs/INSTALLATION.md) ; versions figées : `requirements.txt`, [`versions.lock.json`](versions.lock.json) (prompts, modèles) |
+| L4.4 Tests et sécurité | [`tests/test_etape4.py`](tests/test_etape4.py) (intégration, injection, accès, approbation) |
+| L4.5 Évaluation | [`scripts/evaluate.py`](scripts/evaluate.py) → [`docs/RAPPORT_EVALUATION.md`](docs/RAPPORT_EVALUATION.md) |
+| L4.6 Documentation | [`docs/GUIDE_UTILISATEUR.md`](docs/GUIDE_UTILISATEUR.md), [`docs/DOCUMENTATION_TECHNIQUE.md`](docs/DOCUMENTATION_TECHNIQUE.md) |
+| L4.7 Démonstration et soutenance | [`docs/SOUTENANCE.md`](docs/SOUTENANCE.md) |
+
+```bash
+cp .env.example .env                          # puis renseigner les secrets et TELEGRAM_BOT_TOKEN
+docker compose --profile telegram up -d --build
+docker compose exec api python -m scripts.link_account tech.dupont   # code pour /start <code>
+pytest                                        # tous les tests
+python -m scripts.evaluate                    # évaluation complète (≈ 1 h sur CPU)
+```
 
 ## Étape 3 — Orchestration agentique et MCP
 
@@ -119,6 +144,10 @@ maintidoc/
   mcp_server.py   serveur MCP du service de maintenance simulé (étape 3)
   mcp_client.py   client MCP (étape 3)
   approval.py     jetons d'approbation liés au contenu et à l'utilisateur (étape 3)
+  api.py          backend FastAPI : identités, limites, routes (étape 4)
+  identity.py     comptes, liaison Telegram, brouillons en attente (étape 4)
+  bot/            bot Telegram (étape 4)
+  versioning.py   versions des prompts et modèles (étape 4)
 app.py            interface Streamlit
 scripts/          ingestion, questions, jeu de données, entraînement, démonstrations
 tests/            tests d'extraction, du pipeline V2 et de l'étape 3

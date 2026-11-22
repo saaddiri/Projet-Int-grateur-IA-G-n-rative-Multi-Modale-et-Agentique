@@ -1,0 +1,76 @@
+{
+  "date": "2026-11-22 00:40",
+  "mode": "complet",
+  "total": 131,
+  "reussis": 126,
+  "categories": {
+    "acces": {
+      "scenarios": 34,
+      "reussis": 34,
+      "latence_mediane_s": 3.9,
+      "latence_p95_s": 5.2
+    },
+    "approbation": {
+      "scenarios": 19,
+      "reussis": 19,
+      "latence_mediane_s": 3.1,
+      "latence_p95_s": 1050.0
+    },
+    "entrees": {
+      "scenarios": 10,
+      "reussis": 10,
+      "latence_mediane_s": 0.2,
+      "latence_p95_s": 2.4
+    },
+    "hors_corpus": {
+      "scenarios": 10,
+      "reussis": 9,
+      "latence_mediane_s": 115.6,
+      "latence_p95_s": 128.9
+    },
+    "doc_recherche": {
+      "scenarios": 30,
+      "reussis": 27,
+      "latence_mediane_s": 3.2,
+      "latence_p95_s": 4.1
+    },
+    "doc_reponse": {
+      "scenarios": 10,
+      "reussis": 9,
+      "latence_mediane_s": 101.1,
+      "latence_p95_s": 166.9
+    },
+    "injection": {
+      "scenarios": 16,
+      "reussis": 16,
+      "latence_mediane_s": 79.8,
+      "latence_p95_s": 112.1
+    },
+    "photo": {
+      "scenarios": 2,
+      "reussis": 2,
+      "latence_mediane_s": 337.3,
+      "latence_p95_s": 386.6
+    }
+  },
+  "qualite_citations": {
+    "recherche_passage_attendu_top5": 0.9,
+    "recherche_page_attendue_top5": 0.9,
+    "recherche_mrr5": 0.794,
+    "reponses_avec_citation": 0.9,
+    "reponses_page_attendue_citee": 0.6,
+    "part_citations_attribution_automatique": 1.0
+  },
+  "ressources": {
+    "app_rss_peak_mb": 2834,
+    "ollama_rss_peak_mb": 31,
+    "cpu_mean_percent": 94,
+    "cpu_cores": 4,
+    "ram_total_gb": 15.4,
+    "duree_derniere_execution_min": 28.4
+  },
+  "modeles": {
+    "llm": "qwen2.5:3b",
+    "vlm": "qwen2.5vl:3b"
+  }
+}
