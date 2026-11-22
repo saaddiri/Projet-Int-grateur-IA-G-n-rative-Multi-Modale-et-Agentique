@@ -119,8 +119,26 @@ a été vérifiée.
   « fréquence de remplacement du filtre à air du compresseur », que le manuel ne traite pas) ;
   la photo floue a obtenu -2,86 et c'est le LLM qui a demandé la clarification. Il faudrait
   relever le seuil ou vérifier que la réponse figure dans les passages cités.
-- Le bot a été démarré avec un vrai bot Telegram et la liaison de compte (`/start <code>`) a
-  fonctionné ; les autres commandes depuis Telegram restent à tester manuellement (scénario
-  dans [SOUTENANCE.md](SOUTENANCE.md)). Leur logique est testée de bout en bout jusqu'au backend.
+- Test réel depuis Telegram (22/11, un seul compte, `tech.dupont`) — voir §7.
 - Mesures obtenues pendant que d'autres tâches occupaient la machine (construction de
   l'image Docker) : les latences maximales sont pessimistes.
+
+## 7. Test réel depuis Telegram (critère de validation de l'étape 4)
+
+Bot créé avec @BotFather, backend et bot lancés en local, compte Telegram lié à `tech.dupont`
+par code à usage unique. Observé dans les journaux du backend et du serveur MCP :
+
+| Heure | Action dans Telegram | Résultat |
+|---|---|---|
+| 14:11 | `/start <code>` | compte associé (`POST /link` 200, code marqué utilisé) |
+| 14:34 | `/history CMP-101` | historique renvoyé via MCP (200) |
+| 14:3x | photo + légende | photo téléchargée par le bot, `/analyze` 200 |
+| 14:42 | `/create_ticket CMP-101 vibrations au démarrage depuis ce matin` | historique + tickets consultés (MCP), brouillon renvoyé (200), aucun ticket créé |
+| 14:47 | `/approve <code affiché>` | ticket T-0003 créé par le serveur MCP après l'approbation |
+| 14:48 | `/tickets CNV-310` | refusé par le serveur MCP : « tech.dupont n'est pas habilité sur le site ATELIER-B » |
+
+Critère « depuis Telegram, un technicien transmet une photo, reçoit une réponse, consulte un
+historique et approuve un ticket ; les actions non autorisées sont bloquées » : vérifié sur ce
+parcours. Le contenu de la réponse à la photo n'a pas été relevé dans les journaux (journal
+minimal, sans contenu) ; le refus d'un compte lecteur et d'un compte non associé n'a pas été
+rejoué depuis Telegram (couvert par les tests automatisés et l'évaluation).

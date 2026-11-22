@@ -98,5 +98,5 @@ Journalisation minimale : backend (méthode, route, utilisateur, statut, durée)
 - Filtrage des documents : par document entier (pas par page ni par passage).
 - Limites d'appels en mémoire (une seule instance du backend).
 - Le serveur MCP est relancé à chaque appel (≈ 2,5 s).
-- Bot : démarré avec un vrai bot Telegram, liaison de compte vérifiée ; les autres commandes
-  restent à tester manuellement depuis Telegram (leur logique est testée jusqu'au backend).
+- Bot : testé depuis un vrai compte Telegram (liaison, historique, photo, brouillon,
+  approbation, refus hors site) ; un seul compte utilisé pour ce test réel.
