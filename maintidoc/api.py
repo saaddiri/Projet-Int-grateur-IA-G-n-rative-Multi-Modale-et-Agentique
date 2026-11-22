@@ -29,6 +29,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from . import mcp_client
+from .access import allowed_sources, restricted_to, save_rule
 from .approval import content_hash
 from .config import settings
 from .identity import IdentityStore, Principal
@@ -49,6 +50,8 @@ class Services:
         self.identities = identities or IdentityStore()
         self._graph = graph
         self._lock = threading.Lock()
+
+        self.agents: dict[str, object] = {}
 
     @property
     def graph(self):
@@ -130,6 +133,11 @@ def llm_quota(request: Request, user: User) -> Principal:
 
 
 LLMUser = Annotated[Principal, Depends(llm_quota)]
+
+
+def documents_for(user: Principal) -> list[str]:
+    """Documents indexés que l'utilisateur est autorisé à consulter (filtrage côté serveur)."""
+    return allowed_sources(user.role, user.sites)
 
 
 @app.middleware("http")
@@ -220,7 +228,8 @@ def me(user: User) -> dict:
 def ask(body: AskRequest, user: LLMUser) -> dict:
     from .multimodal import answer
 
-    result, trace = answer(body.question)
+    with restricted_to(documents_for(user)):
+        result, trace = answer(body.question)
     return result.model_dump() | {"reranker": trace.reranker}
 
 
@@ -240,8 +249,81 @@ def analyze(user: LLMUser, photo: Annotated[UploadFile, File()],
         raise HTTPException(415, "Fichier non reconnu comme une image.") from None
     from .multimodal import answer
 
-    result, trace = answer(question, image)
+    with restricted_to(documents_for(user)):
+        result, trace = answer(question, image)
     return result.model_dump() | {"reranker": trace.reranker}
+
+
+def _hits(hits) -> list[dict]:
+    return [{"source": h.source, "page": h.page, "content_type": h.content_type, "score": round(h.score, 3),
+             "excerpt": h.text.strip()[:600], "image_path": h.image_path} for h in hits]
+
+
+@app.post("/rag")
+def rag(body: AskRequest, user: LLMUser) -> dict:
+    """RAG simple (étape 1) : recherche + génération, sans reranking."""
+    from .rag import answer_with_rag
+
+    with restricted_to(documents_for(user)):
+        result = answer_with_rag(body.question)
+    return {"answer": result.text, "sources": _hits(result.sources)}
+
+
+@app.post("/agent")
+def agent(body: AskRequest, request: Request, user: LLMUser) -> dict:
+    """Agent LangChain (étape 1) : le LLM choisit ses outils de recherche ; historique par utilisateur."""
+    from .agent import MaintiDocAgent
+
+    agents = services(request).agents
+    if user.user_id not in agents:
+        agents[user.user_id] = MaintiDocAgent()
+    with restricted_to(documents_for(user)):
+        result = agents[user.user_id].ask(body.question)
+    return {"answer": result.text, "sources": _hits(result.sources), "tool_calls": result.tool_calls}
+
+
+@app.post("/agent/reset")
+def agent_reset(request: Request, user: User) -> dict:
+    services(request).agents.pop(user.user_id, None)
+    return {"reset": True}
+
+
+@app.get("/documents")
+def documents(user: User) -> dict:
+    from .store import list_documents
+
+    visible = set(documents_for(user))
+    return {"documents": [d for d in list_documents() if d["source"] in visible]}
+
+
+@app.post("/documents")
+def upload_document(user: User, pdf: Annotated[UploadFile, File()],
+                    roles: Annotated[str, Form()] = "superviseur",
+                    sites: Annotated[str, Form()] = "*") -> dict:
+    """Ajout d'un document (superviseurs) avec sa règle d'accès, puis indexation."""
+    import re
+    from pathlib import Path
+
+    from .config import ROOT_DIR
+    from .indexing import index_pdf
+
+    if user.role != "superviseur":
+        raise HTTPException(403, "Seul un superviseur peut ajouter un document.")
+    name = re.sub(r"[^\w.\-]", "_", Path(pdf.filename or "document.pdf").name)
+    if not name.lower().endswith(".pdf"):
+        raise HTTPException(415, "Seuls les fichiers PDF sont acceptés.")
+    data = pdf.file.read(50 * 1024 * 1024 + 1)
+    if len(data) > 50 * 1024 * 1024 or not data.startswith(b"%PDF"):
+        raise HTTPException(415, "Fichier PDF invalide ou trop volumineux (50 Mo maximum).")
+    role_list = [r for r in (x.strip() for x in roles.split(",")) if r in ("lecteur", "technicien", "superviseur")]
+    site_list = [x.strip() for x in sites.split(",") if x.strip()] or ["*"]
+    target = ROOT_DIR / "uploads" / name
+    target.parent.mkdir(exist_ok=True)
+    target.write_bytes(data)
+    # La règle d'accès est enregistrée AVANT l'indexation : le document n'est jamais visible sans règle.
+    save_rule(name, role_list or ["superviseur"], site_list)
+    summary = index_pdf(target)
+    return {"indexed": summary, "access": {"roles": role_list or ["superviseur"], "sites": site_list}}
 
 
 @app.get("/equipment/{equipment_id}/history")
@@ -257,7 +339,7 @@ def open_tickets(equipment_id: str, user: User) -> dict:
 def _config(user: Principal, thread_id: str) -> dict:
     from .workflow import run_config
 
-    return run_config(thread_id, user.user_id, on_behalf_of=user.user_id)
+    return run_config(thread_id, user.user_id, on_behalf_of=user.user_id, allowed_sources=documents_for(user))
 
 
 @app.post("/tickets/draft")

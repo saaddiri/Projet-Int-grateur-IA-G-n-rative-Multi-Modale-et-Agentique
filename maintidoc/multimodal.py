@@ -19,14 +19,13 @@ from dataclasses import dataclass, field
 from typing import Literal
 
 from langchain_core.messages import HumanMessage, SystemMessage
-from llama_index.core.vector_stores.types import VectorStoreQuery
 from PIL import Image
 from pydantic import BaseModel, Field
 
 from .images import encode_text_multilingual, get_clip
 from .rag import get_llm
 from .reranker import default_reranker, rerank
-from .retrieval import Hit, _to_hits, search
+from .retrieval import Hit, query_store, search
 from .store import image_store
 from .vision import PhotoAnalysis, analyze_photo
 
@@ -96,7 +95,7 @@ def _key(hit: Hit) -> str:
 
 
 def _image_hits(vector: list[float], k: int) -> list[Hit]:
-    hits = _to_hits(image_store().query(VectorStoreQuery(query_embedding=vector, similarity_top_k=k)))
+    hits = query_store(image_store(), vector, k)
     for hit in hits:
         hit.content_type = "image_description"
     return hits

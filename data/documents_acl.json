@@ -1,0 +1,17 @@
+{
+  "_note": "Règles d'accès aux documents indexés (clé = nom du fichier source). Un document absent suit la règle par défaut.",
+  "default": {
+    "roles": ["superviseur"],
+    "sites": ["*"]
+  },
+  "documents": {
+    "attention_is_all_you_need.pdf": {
+      "roles": ["lecteur", "superviseur", "technicien"],
+      "sites": ["*"]
+    },
+    "manuel_CMP-101.pdf": {
+      "roles": ["superviseur", "technicien"],
+      "sites": ["ATELIER-A"]
+    }
+  }
+}

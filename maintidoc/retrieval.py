@@ -12,6 +12,7 @@ from llama_index.core.vector_stores.types import (
     VectorStoreQuery,
 )
 
+from .access import current_restriction
 from .images import get_clip
 from .store import get_text_embedder, image_store, text_store, type_filter
 
@@ -67,11 +68,28 @@ def _explicit_captions(query: str, content_types: list[str]) -> list[str]:
     return captions
 
 
+def with_access(filters: MetadataFilters | None) -> MetadataFilters | None | bool:
+    """Ajoute le filtre des documents autorisés (voir access.py).
+
+    Renvoie False si l'utilisateur n'a accès à aucun document (requête inutile)."""
+    allowed = current_restriction()
+    if allowed is None:
+        return filters
+    if not allowed:
+        return False
+    acl = MetadataFilter(key="source", value=list(allowed), operator=FilterOperator.IN)
+    return MetadataFilters(filters=[*(filters.filters if filters else []), acl])
+
+
+def query_store(store, embedding: list[float], k: int, filters: MetadataFilters | None = None) -> list[Hit]:
+    filters = with_access(filters)
+    if filters is False:
+        return []
+    return _to_hits(store.query(VectorStoreQuery(query_embedding=embedding, similarity_top_k=k, filters=filters)))
+
+
 def _query(embedding: list[float], filters: MetadataFilters, k: int) -> list[Hit]:
-    result = text_store().query(
-        VectorStoreQuery(query_embedding=embedding, similarity_top_k=k, filters=filters)
-    )
-    return _to_hits(result)
+    return query_store(text_store(), embedding, k, filters)
 
 
 def _dedupe(hits: list[Hit]) -> list[Hit]:
@@ -120,13 +138,11 @@ def search_images(query: str, k: int = 2) -> list[Hit]:
     les embeddings texte multilingues, couvrent les questions longues ou en
     français. On garde la première occurrence de chaque image.
     """
-    clip_res = image_store().query(
-        VectorStoreQuery(query_embedding=get_clip().encode_text(query), similarity_top_k=k)
-    )
+    clip_hits = query_store(image_store(), get_clip().encode_text(query), k)
     descriptions = search(query, ["image_description"], k)
     explicit = descriptions if _explicit_captions(query, ["image_description"]) else []
     merged: dict[str, Hit] = {}
-    for hit in explicit + _to_hits(clip_res) + descriptions:
+    for hit in explicit + clip_hits + descriptions:
         key = hit.image_path or hit.text
         if key not in merged:
             merged[key] = hit

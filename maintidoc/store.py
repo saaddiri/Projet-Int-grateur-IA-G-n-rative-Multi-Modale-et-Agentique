@@ -33,6 +33,9 @@ def _store(table_name: str, embed_dim: int) -> PGVectorStore:
         table_name=table_name,
         embed_dim=embed_dim,
         perform_setup=True,
+        # Connexions vérifiées avant usage : après un redémarrage de PostgreSQL, les
+        # connexions mortes du pool sont remplacées au lieu de provoquer une erreur 500.
+        create_engine_kwargs={"pool_pre_ping": True, "pool_recycle": 1800},
     )
 
 
@@ -73,7 +76,7 @@ def _engine():
         f"postgresql+psycopg2://{settings.pg_user}:{settings.pg_password}"
         f"@{settings.pg_host}:{settings.pg_port}/{settings.pg_database}"
     )
-    return create_engine(url)
+    return create_engine(url, pool_pre_ping=True)
 
 
 def list_documents() -> list[dict]:

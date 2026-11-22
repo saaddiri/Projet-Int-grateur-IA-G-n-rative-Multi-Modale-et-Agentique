@@ -147,8 +147,14 @@ def search_docs(state: MaintiDocState, config: RunnableConfig) -> dict:
 
     from .multimodal import answer
 
+    from contextlib import nullcontext
+
+    from .access import restricted_to
+
     photo = Image.open(state["photo_path"]) if state.get("photo_path") else None
-    result, _ = answer(state["question"], photo, reranker=_cfg(config).get("reranker", "default"))
+    allowed = _cfg(config).get("allowed_sources")  # documents autorisés pour l'utilisateur
+    with restricted_to(allowed) if allowed is not None else nullcontext():
+        result, _ = answer(state["question"], photo, reranker=_cfg(config).get("reranker", "default"))
     return {"doc_answer": result.model_dump(exclude={"photo_analysis"}),
             "steps": [f"rechercher_documentation : {len(result.citations)} citation(s), "
                       f"incertitude {result.uncertainty}"]}
@@ -297,9 +303,10 @@ def build_graph(checkpointer: Any = None):
 
 
 def run_config(thread_id: str, user_id: str, api_key: str | None = None, reranker: Any = "default",
-               on_behalf_of: str | None = None) -> dict:
+               on_behalf_of: str | None = None, allowed_sources: list[str] | None = None) -> dict:
     return {"configurable": {"thread_id": thread_id, "user_id": user_id, "api_key": api_key,
-                             "on_behalf_of": on_behalf_of, "reranker": reranker}}
+                             "on_behalf_of": on_behalf_of, "reranker": reranker,
+                             "allowed_sources": allowed_sources}}
 
 
 def pending_interrupt(result: dict) -> dict | None:
